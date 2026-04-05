@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sandboxes",
+  "version": "1.0.0",
+  "name": "Sandboxes",
+  "description": "Copy your survival world into a creative sandbox for experimenting.",
+  "authors": ["trevorschoeny"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.trevorschoeny.creativesandbox.CreativeSandboxMod"],
+    "client": ["com.trevorschoeny.creativesandbox.CreativeSandboxClient"]
+  },
+  "mixins": ["sandboxes.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric-api": "*",
+    "minecraft": "~1.21",
+    "menukit": ">=0.1.0"
+  }
+}

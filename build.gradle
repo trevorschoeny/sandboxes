@@ -1,0 +1,22 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// Sandboxes — copy your survival world into a creative sandbox.
+// Depends on MenuKit for panels, buttons, and the family API.
+// ═══════════════════════════════════════════════════════════════════════════
+
+base.archivesName = 'sandboxes'
+
+// No runClient — use dev:runClient for the full dev environment
+loom {
+    runs {
+        client { ideConfigGenerated = false }
+        server { ideConfigGenerated = false }
+    }
+}
+
+dependencies {
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.property('fabric_version')}"
+    modImplementation "dev.isxander:yet-another-config-lib:${rootProject.property('yacl_version')}"
+
+    // MenuKit — use namedElements for unmapped project outputs (Loom requirement)
+    implementation project(path: ':menukit', configuration: 'namedElements')
+}
