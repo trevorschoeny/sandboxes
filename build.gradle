@@ -3,9 +3,43 @@
 // Depends on MenuKit for panels, buttons, and the family API.
 // ═══════════════════════════════════════════════════════════════════════════
 
+plugins {
+    id 'fabric-loom' version '1.14-SNAPSHOT'
+    id 'java'
+}
+
+version = property('mod_version')
+group   = property('maven_group')
+
 base.archivesName = 'sandboxes'
 
-// No runClient — use dev:runClient for the full dev environment
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    maven { url 'https://maven.fabricmc.net/' }
+    maven { url 'https://maven.terraformersmc.com/releases/' }
+    maven { url 'https://maven.isxander.dev/releases' }
+    maven { url 'https://api.modrinth.com/maven' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${property('minecraft_version')}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${property('loader_version')}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${property('fabric_version')}"
+    modImplementation "dev.isxander:yet-another-config-lib:${property('yacl_version')}"
+
+    // MenuKit — monorepo uses project ref, standalone uses Modrinth Maven
+    if (findProject(':menukit') != null) {
+        implementation project(path: ':menukit', configuration: 'namedElements')
+    } else {
+        modImplementation "maven.modrinth:menukit:${property('menukit_version')}"
+    }
+}
+
 loom {
     runs {
         client { ideConfigGenerated = false }
@@ -13,10 +47,6 @@ loom {
     }
 }
 
-dependencies {
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.property('fabric_version')}"
-    modImplementation "dev.isxander:yet-another-config-lib:${rootProject.property('yacl_version')}"
-
-    // MenuKit — use namedElements for unmapped project outputs (Loom requirement)
-    implementation project(path: ':menukit', configuration: 'namedElements')
+jar {
+    from('LICENSE') { rename { "${it}_${project.name}" } }
 }
