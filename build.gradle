@@ -6,6 +6,7 @@
 plugins {
     id 'fabric-loom' version '1.14-SNAPSHOT'
     id 'java'
+    id 'com.modrinth.minotaur' version '2.+'
 }
 
 version = property('mod_version')
@@ -49,4 +50,19 @@ loom {
 
 jar {
     from('LICENSE') { rename { "${it}_${project.name}" } }
+}
+
+// ── Modrinth Publishing ────────────────────────────────────────────────
+modrinth {
+    token = System.getenv("MODRINTH_TOKEN")
+    projectId = "sandboxes"
+    versionNumber = property('mod_version')
+    versionName = "Sandboxes ${property('mod_version')}"
+    versionType = "beta"
+    uploadFile = remapJar
+    gameVersions = [property('minecraft_version')]
+    loaders = ["fabric"]
+    dependencies {
+        required.project "menukit"
+    }
 }
