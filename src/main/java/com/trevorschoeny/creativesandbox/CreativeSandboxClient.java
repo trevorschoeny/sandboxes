@@ -1,6 +1,6 @@
 package com.trevorschoeny.creativesandbox;
 
-import com.trevorschoeny.menukit.MKFamily;
+import com.trevorschoeny.menukit.config.MKFamily;
 import com.trevorschoeny.menukit.MenuKit;
 import dev.isxander.yacl3.api.*;
 import dev.isxander.yacl3.api.controller.BooleanControllerBuilder;

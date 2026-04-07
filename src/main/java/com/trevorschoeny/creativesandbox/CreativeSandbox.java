@@ -3,7 +3,7 @@ package com.trevorschoeny.creativesandbox;
 import com.trevorschoeny.creativesandbox.mixin.MinecraftServerAccessor;
 import com.trevorschoeny.creativesandbox.ui.SandboxScreen;
 import com.trevorschoeny.menukit.MKContext;
-import com.trevorschoeny.menukit.MKPanel;
+import com.trevorschoeny.menukit.panel.MKPanel;
 import java.util.List;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
