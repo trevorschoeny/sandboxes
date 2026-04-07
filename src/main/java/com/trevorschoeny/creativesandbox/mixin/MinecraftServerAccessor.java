@@ -9,4 +9,7 @@ import net.minecraft.server.MinecraftServer;
 public interface MinecraftServerAccessor {
     @Accessor("storageSource")
     LevelStorageSource.LevelStorageAccess getStorageSource();
+
+    @Accessor("serverThread")
+    Thread getServerThread();
 }

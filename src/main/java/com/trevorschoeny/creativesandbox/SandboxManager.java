@@ -1,5 +1,6 @@
 package com.trevorschoeny.creativesandbox;
 
+import com.trevorschoeny.creativesandbox.mixin.MinecraftServerAccessor;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.GenericMessageScreen;
@@ -14,7 +15,6 @@ import net.minecraft.world.level.storage.ValueOutput;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.util.concurrent.CountDownLatch;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
@@ -51,25 +51,20 @@ public class SandboxManager {
     // How long to wait for the old server thread to die before giving up
     private static final long SERVER_SHUTDOWN_TIMEOUT_MS = 30_000;
 
-    // How often to check if the old server thread has stopped
-    private static final long SERVER_POLL_INTERVAL_MS = 100;
-
     /**
      * Disconnect from the current world and open a different one.
      *
      * The core challenge: mc.disconnect() triggers FastQuit, which keeps the
      * server thread alive for background saving. This prevents the server from
-     * ever reaching isStopped(), and XaeroLib throws "Multiple servers running"
+     * ever reaching isShutdown(), and XaeroLib throws "Multiple servers running"
      * when we try to open a new world.
      *
      * Solution: kill the server BEFORE disconnect, so FastQuit has nothing to save.
      *
-     * 1. Pre-save: flush all data to disk while the server is fully active
-     * 2. Halt: tell the server to stop directly via halt(false), bypassing FastQuit
-     * 3. Poll: wait for isStopped() — works because FastQuit isn't involved
-     * 4. Disconnect: client-side cleanup only (server already dead)
-     * 5. Clear FastQuit: safety net in case it tracked something
-     * 6. Open: schedule openWorld() on the render thread
+     * 1. Pre-save: flush all data to disk while the server is still fully active
+     * 2. Halt: tell the server to stop via halt(false), bypassing FastQuit
+     * 3. Join: wait for the server thread to die (session.lock released)
+     * 4. Disconnect + open: client cleanup then open the target world
      */
     public static void disconnectAndOpen(String folderName) {
         Minecraft mc = Minecraft.getInstance();
@@ -79,7 +74,7 @@ public class SandboxManager {
         mc.setScreen(new GenericMessageScreen(Component.literal("Switching worlds...")));
 
         new Thread(() -> {
-            // ── Phase 1: Pre-save ──────────────────────────────────────────
+            // ── 1. Pre-save ───────────────────────────────────────────────
             // Flush all world data to disk while the server is still fully active.
             if (oldServer != null) {
                 CreativeSandboxMod.LOGGER.info("[Sandboxes] Pre-saving world before switch...");
@@ -91,76 +86,79 @@ public class SandboxManager {
                 }
             }
 
-            // ── Phase 2: Halt the server directly ──────────────────────────
+            // ── 2. Halt ───────────────────────────────────────────────────
             // By calling halt() BEFORE mc.disconnect(), the server shuts down
             // through its normal code path. FastQuit only intercepts disconnect(),
             // so it never gets a chance to keep the server alive.
             if (oldServer != null) {
                 CreativeSandboxMod.LOGGER.info("[Sandboxes] Halting server...");
-                oldServer.halt(false); // false = don't block, we'll poll ourselves
+                oldServer.halt(false);
             }
 
-            // ── Phase 3: Wait for old server to fully stop ──────────────────
+            // ── 3. Join ───────────────────────────────────────────────────
+            // Wait for the server thread to actually die. We must NOT use
+            // isStopped() here — in runServer() the order is:
+            //
+            //   stopped = true;    ← isStopped() returns true here
+            //   stopServer();      ← session.lock released here (can take 60s+)
+            //   onServerExit();    ← thread dies after this
+            //
+            // Thread.join() is the proper way to wait — same check vanilla's
+            // disconnect() uses (isShutdown = !serverThread.isAlive()).
             if (oldServer != null) {
-                CreativeSandboxMod.LOGGER.info("[Sandboxes] Waiting for old server to stop...");
+                Thread serverThread = ((MinecraftServerAccessor) oldServer).getServerThread();
+                CreativeSandboxMod.LOGGER.info("[Sandboxes] Waiting for server thread to die...");
                 long waitStart = System.currentTimeMillis();
 
-                while (!oldServer.isStopped()) {
-                    long elapsed = System.currentTimeMillis() - waitStart;
+                try {
+                    serverThread.join(SERVER_SHUTDOWN_TIMEOUT_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    CreativeSandboxMod.LOGGER.warn("[Sandboxes] Switch thread interrupted");
+                    return;
+                }
 
-                    if (elapsed >= SERVER_SHUTDOWN_TIMEOUT_MS) {
-                        CreativeSandboxMod.LOGGER.error(
-                                "[Sandboxes] Server did not stop after {}ms — aborting world switch",
-                                elapsed
-                        );
-                        mc.execute(() -> mc.setScreen(new TitleScreen()));
-                        return;
-                    }
-
-                    try {
-                        Thread.sleep(SERVER_POLL_INTERVAL_MS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        CreativeSandboxMod.LOGGER.warn("[Sandboxes] Switch thread interrupted");
-                        return;
-                    }
+                if (serverThread.isAlive()) {
+                    CreativeSandboxMod.LOGGER.error(
+                            "[Sandboxes] Server thread still alive after {}ms — aborting world switch",
+                            SERVER_SHUTDOWN_TIMEOUT_MS
+                    );
+                    mc.execute(() -> mc.setScreen(new TitleScreen()));
+                    return;
                 }
 
                 long totalWait = System.currentTimeMillis() - waitStart;
-                CreativeSandboxMod.LOGGER.info("[Sandboxes] Old server stopped after {}ms", totalWait);
+                CreativeSandboxMod.LOGGER.info("[Sandboxes] Server thread died after {}ms", totalWait);
+
+                // Safety net: if stopServer() threw an exception (e.g. "Entity is
+                // already tracked!"), storageSource.close() never ran and the
+                // session.lock is permanently held. Close it explicitly so the
+                // target world can acquire its own lock.
+                try {
+                    ((MinecraftServerAccessor) oldServer).getStorageSource().close();
+                } catch (Exception ignored) {
+                    // Already closed by stopServer() — expected in the normal case
+                }
             }
 
-            // ── Phase 4: Disconnect client ──────────────────────────────────
-            // Server is already dead. This just does client-side cleanup
-            // (removes player, clears level, etc). FastQuit sees a dead server
-            // and has nothing to save.
-            CountDownLatch disconnectDone = new CountDownLatch(1);
+            // ── 4. Disconnect + open ──────────────────────────────────────
+            // Server is dead. Disconnect does client-side cleanup (clears level,
+            // player, etc), then we open the target world — all in one render
+            // thread task, no latch needed.
             mc.execute(() -> {
-                CreativeSandboxMod.LOGGER.info("[Sandboxes] Disconnecting client...");
+                CreativeSandboxMod.LOGGER.info("[Sandboxes] Disconnecting and opening: {}", folderName);
                 mc.disconnect(
                         new GenericMessageScreen(Component.literal("Switching worlds...")),
                         false
                 );
-                // Safety net: clear FastQuit in case it still tracked something
                 clearFastQuitSavingWorlds();
-                disconnectDone.countDown();
-            });
 
-            try {
-                disconnectDone.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-
-            // ── Phase 5: Open the new world ────────────────────────────────
-            mc.execute(() -> {
-                CreativeSandboxMod.LOGGER.info("[Sandboxes] Opening world: {}", folderName);
                 try {
                     mc.createWorldOpenFlows().openWorld(folderName, () ->
                             CreativeSandboxMod.LOGGER.error("[Sandboxes] Failed to open world: {}", folderName));
                 } catch (Exception e) {
                     CreativeSandboxMod.LOGGER.error("[Sandboxes] Exception opening world: {}", folderName, e);
+                    mc.setScreen(new TitleScreen());
                 }
             });
         }, "sandboxes-switch").start();
@@ -421,25 +419,55 @@ public class SandboxManager {
 
     // ── File helpers ──────────────────────────────────────────────────────────
 
-    /** Copy a world folder, skipping session.lock. */
+    /**
+     * Copy a world folder, skipping session.lock.
+     *
+     * On macOS (APFS), uses {@code cp -c -a} for copy-on-write cloning —
+     * nearly instant regardless of world size because only metadata is copied
+     * and data blocks are shared. Falls back to Java file-by-file copy on
+     * other platforms.
+     */
     private static void copyWorld(Path source, Path dest) throws IOException {
-        Files.createDirectories(dest);
-        Files.walkFileTree(source, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                Files.createDirectories(dest.resolve(source.relativize(dir)));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (!file.getFileName().toString().equals("session.lock")) {
-                    Files.copy(file, dest.resolve(source.relativize(file)),
-                            StandardCopyOption.REPLACE_EXISTING);
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("mac")) {
+            // APFS clone: cp -c (clone) -a (archive/recursive + preserve attrs)
+            // Copies metadata only — data blocks are shared copy-on-write.
+            try {
+                int exit = new ProcessBuilder("cp", "-c", "-a",
+                        source.toString(), dest.toString())
+                        .inheritIO()
+                        .start()
+                        .waitFor();
+                if (exit != 0) {
+                    throw new IOException("cp -c -a exited with code " + exit);
                 }
-                return FileVisitResult.CONTINUE;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted during world copy", e);
             }
-        });
+        } else {
+            // Fallback: Java file-by-file copy for non-macOS platforms
+            Files.createDirectories(dest);
+            Files.walkFileTree(source, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    Files.createDirectories(dest.resolve(source.relativize(dir)));
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (!file.getFileName().toString().equals("session.lock")) {
+                        Files.copy(file, dest.resolve(source.relativize(file)),
+                                StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
+        // Remove session.lock from the copy (cp -c copies everything)
+        Files.deleteIfExists(dest.resolve("session.lock"));
     }
 
     /**
