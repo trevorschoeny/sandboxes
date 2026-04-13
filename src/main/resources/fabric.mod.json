@@ -17,6 +17,6 @@
     "fabricloader": ">=0.15.0",
     "fabric-api": "*",
     "minecraft": "~1.21",
-    "menukit": ">=0.1.0"
+    "menukit": ">=1.0.0"
   }
 }
