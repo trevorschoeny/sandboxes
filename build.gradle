@@ -1,0 +1,147 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// Sandboxes: creative-mode copies of a singleplayer world (client only).
+// Depends on MenuKit for the pause-menu quick button. Design lives in the
+// Leadership drive at mods/sandboxes/plan.md.
+//
+// Build: `./gradlew :sandboxes:build` from the workspace root.
+// ═══════════════════════════════════════════════════════════════════════════
+
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT'
+    id 'java'
+    id 'com.modrinth.minotaur' version '2.+'
+}
+
+version = property('sandboxes_version')
+group   = property('maven_group')
+
+base.archivesName = 'sandboxes'
+
+java {
+    // Minecraft 26.x runs on Java 25.
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+repositories {
+    maven { url 'https://maven.fabricmc.net/' }
+    maven { url 'https://api.modrinth.com/maven' }
+}
+
+dependencies {
+    // 26.x: the game is unobfuscated, so no mappings line and plain java configurations.
+    minecraft "com.mojang:minecraft:${property('minecraft_version')}"
+    implementation "net.fabricmc:fabric-loader:${property('loader_version')}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${property('fabric_version')}"
+
+    // MenuKit: the pause-menu quick button (VanillaScreenPanelAdapter on PauseScreen).
+    implementation project(':menukit')
+
+    // ponytail: YACL (JIJ) and ModMenu arrive with the config screen, not before.
+}
+
+loom {
+    runs {
+        client { ideConfigGenerated = false }
+        // Test Gallery: boots straight into the generated test world in run/saves/TestGallery.
+        // Generate it with `test-gallery/run-scene.sh <mod> <scene>` (which also runs this).
+        testGallery {
+            inherit client
+            name 'Test Gallery'
+            programArgs '--quickPlaySingleplayer', 'TestGallery'
+            ideConfigGenerated = false
+        }
+    }
+}
+
+jar {
+    from('LICENSE') { rename { "${it}_${project.name}" } }
+}
+
+// Stamp the real project version into fabric.mod.json at build; a hardcoded
+// manifest version silently breaks every dependency gate against this mod.
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
+}
+
+// ── Modrinth Publishing ────────────────────────────────────────────────
+// Sandboxes: Modrinth project id 224H9D8d (slug sandboxes). Lead owns the publish.
+modrinth {
+    token = System.getenv("MODRINTH_TOKEN")
+    projectId = "224H9D8d"
+    versionNumber = property('sandboxes_version')
+    versionName = "Sandboxes ${property('sandboxes_version')}"
+    versionType = "release"
+    // ci-cd.md stage 5: one entry, overwritten each release (git keeps the history).
+    changelog = file('changelog.md').text
+    // ci-cd.md stage 7: the README is the public description; `modrinthSyncBody` pushes it.
+    syncBodyFrom = file('README.md').text
+    uploadFile = jar
+    gameVersions = [property('minecraft_version')]
+    loaders = ["fabric"]
+    dependencies {
+        required.project "fabric-api"
+        required.project "menukit"
+    }
+}
+// ci-cd.md stage 2: the shipped jar must self-report the bumped version. A jar that
+// says the wrong version silently breaks every dependency gate against it, so this
+// fails the build instead of relying on someone remembering to unzip and look.
+tasks.register('verifyJarVersion') {
+    dependsOn 'jar'
+    doLast {
+        def jar = tasks.named('jar').get().archiveFile.get().asFile
+        def modJson = zipTree(jar).matching { include 'fabric.mod.json' }.singleFile
+        def stamped = new groovy.json.JsonSlurper().parse(modJson).version
+        if (stamped != project.version.toString()) {
+            throw new GradleException("${jar.name}: fabric.mod.json says ${stamped}, expected ${project.version}")
+        }
+        println "verifyJarVersion: ${jar.name} reports ${stamped}"
+    }
+}
+build.dependsOn verifyJarVersion
+
+// ci-cd.md stage 2: this mod must pin MenuKit to the major it was built against.
+// The floor guarantees every MenuKit call it makes exists at load time; the ceiling stops a
+// future breaking major from loading against code that never saw it. Both halves matter:
+// a floor alone lets MenuKit 6.0.0 rename an API out from under a shipped jar, and the
+// player gets a NoSuchMethodError hours into a session instead of a refusal at launch.
+// Commas are rejected outright: Fabric parses ">=5.0.0,<6.0.0" without complaint and the
+// resulting predicate then matches NO version at all, which silently disables the mod.
+tasks.register('verifyMenuKitRange') {
+    def src = file('src/main/resources/fabric.mod.json')
+    def mkVersion = (project.findProperty('menukit_version') ?: '').toString()
+    inputs.file src
+    inputs.property 'menukit_version', mkVersion
+    doLast {
+        // Floor at major.minor, not just major: a minor can add API (MenuKit 5.1.0 added
+        // SlotOperations/SlotGroups) that a consumer built against it calls. Flooring at the
+        // major alone would let that jar load on the unrelated 5.0.0 and die with
+        // NoSuchMethodError, which is exactly the failure this check exists to prevent.
+        def parts = mkVersion.replaceAll(/\+.*$/, '').tokenize('.')
+        def major = Integer.parseInt(parts[0])
+        def minor = Integer.parseInt(parts[1])
+        def expected = ">=${major}.${minor}.0 <${major + 1}.0.0".toString()
+        def depends = new groovy.json.JsonSlurper().parse(src).depends ?: [:]
+        ['menukit', 'menukit-containers'].each { id ->
+            def declared = depends[id]?.toString()
+            if (declared == null) return
+            if (declared.contains(',')) {
+                throw new GradleException(
+                    "fabric.mod.json: '${id}' is '${declared}'. Fabric accepts a comma here and the " +
+                    "predicate then matches no version at all. Separate the bounds with a space.")
+            }
+            if (declared != expected) {
+                throw new GradleException(
+                    "fabric.mod.json: '${id}' is '${declared}', expected '${expected}'. This mod is " +
+                    "built against MenuKit ${mkVersion}, so it floors at that major.minor and stops " +
+                    "below the next major. See guidelines/ci-cd.md, 'MenuKit version pinning'.")
+            }
+        }
+        println "verifyMenuKitRange: menukit '${expected}' (built against ${mkVersion})"
+    }
+}
+build.dependsOn verifyMenuKitRange

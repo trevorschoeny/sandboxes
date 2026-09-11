@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+out/
+bin/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Loom
+.loom/
+
+# macOS
+.DS_Store
+
+# Claude worktrees / metadata
+.claude/
+
+# Dev runtime: logs, saves, configs. Matches inventory-plus.
+run/
