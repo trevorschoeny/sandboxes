@@ -42,22 +42,17 @@ public final class WorldSwitch {
      * Joins a sandbox.
      *
      * <p>Every way in goes through here (the list's Join, a double-clicked row,
-     * the quick button), so the arrival is the same however the player got here:
-     * the world is saved, the player is put where they are standing right now,
-     * and only then does the sandbox open.
+     * the quick button) so they can't drift apart.
+     *
+     * <p>Nothing about the player crosses at this point. A sandbox is forked
+     * once, at create or sync, and from then on it is its own world with its own
+     * position and inventory: joining puts the player back where they left off
+     * inside it, not where they are standing in the main world (Trev,
+     * 2026-09-12).
      */
     public static void enterSandbox(Sandbox sandbox) {
-        Minecraft mc = Minecraft.getInstance();
         SandboxStore.markJoined(sandbox);
-        Path parentDir = SandboxStore.savesDir().resolve(sandbox.parentId());
-
-        // Saving blocks until the server has written everything, so it can't run
-        // on the client thread.
-        Thread.ofPlatform().name("sandboxes-enter").start(() -> {
-            saveCurrentWorld();
-            WorldFiles.placePlayerLikeParent(parentDir, sandbox.dir());
-            mc.execute(() -> openLevel(sandbox.levelId()));
-        });
+        openLevel(sandbox.levelId());
     }
 
     /**

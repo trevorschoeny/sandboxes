@@ -5,10 +5,7 @@ import com.trevorschoeny.sandboxes.SandboxesClient;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.Tag;
 import net.minecraft.util.Util;
-
-import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -225,56 +222,6 @@ public final class WorldFiles {
             tag.remove("trevormod_sandboxes");
             NbtIo.writeCompressed(tag, file);
         });
-    }
-
-    /**
-     * Moves the player to where they are in the main world right now, so joining
-     * a sandbox is a step sideways rather than a jump back to wherever they
-     * stood when the copy was taken (Trev, 2026-09-12).
-     *
-     * <p>Only position, rotation and dimension cross. Inventory, XP and the rest
-     * stay on their own side of the fence, which is the invariant the whole
-     * feature rests on.
-     *
-     * @param parentDir  the live world, already saved
-     * @param sandboxDir the sandbox about to be opened
-     */
-    public static void placePlayerLikeParent(Path parentDir, Path sandboxDir) {
-        CompoundTag source = firstPlayerFile(parentDir);
-        if (source == null) return;   // never saved: the sandbox keeps its own idea
-
-        forEachPlayerFile(sandboxDir, file -> {
-            CompoundTag tag = NbtIo.readCompressed(file, NbtAccounter.uncompressedQuota());
-            for (String key : List.of("Pos", "Rotation", "Motion", "Dimension")) {
-                Tag value = source.get(key);
-                if (value != null) tag.put(key, value.copy());
-            }
-            // Arriving is also the moment to be sure of the mode, in case this
-            // sandbox came from v1 or from an older build.
-            tag.putInt("playerGameType", 1);
-            NbtIo.writeCompressed(tag, file);
-        });
-    }
-
-    /** The world's saved player record, or null when it has none yet. */
-    private static @Nullable CompoundTag firstPlayerFile(Path worldDir) {
-        for (String dir : PLAYER_DIRS) {
-            Path playerDir = worldDir.resolve(dir);
-            if (!Files.isDirectory(playerDir)) continue;
-            try (Stream<Path> files = Files.list(playerDir)) {
-                for (Path file : files.toList()) {
-                    if (!file.getFileName().toString().endsWith(".dat")) continue;
-                    try {
-                        return NbtIo.readCompressed(file, NbtAccounter.uncompressedQuota());
-                    } catch (IOException e) {
-                        SandboxesClient.LOGGER.warn("[sandboxes] couldn't read {}", file, e);
-                    }
-                }
-            } catch (IOException e) {
-                SandboxesClient.LOGGER.warn("[sandboxes] couldn't list {}", playerDir, e);
-            }
-        }
-        return null;
     }
 
     /** Applies {@code work} to every {@code .dat} player record under a world. */
