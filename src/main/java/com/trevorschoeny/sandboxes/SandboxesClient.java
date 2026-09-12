@@ -1,13 +1,18 @@
 package com.trevorschoeny.sandboxes;
 
+import com.trevorschoeny.sandboxes.config.SandboxesConfig;
+import com.trevorschoeny.sandboxes.sandbox.LegacyMigration;
+import com.trevorschoeny.sandboxes.ui.InSandboxHud;
+import com.trevorschoeny.sandboxes.ui.QuickButton;
+
 import net.fabricmc.api.ClientModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Sandboxes: creative-mode copies of a singleplayer world, joined and left from
- * the pause menu. Client-only: every sandbox runs on the integrated server, so
- * nothing here needs a dedicated-server side.
+ * Sandboxes: creative-mode copies of a singleplayer world, made and joined from
+ * the pause menu. Client-only, because every sandbox runs on this client's own
+ * integrated server.
  *
  * Design: Leadership drive, mods/sandboxes/plan.md.
  */
@@ -17,6 +22,16 @@ public class SandboxesClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        SandboxesConfig.load();
+        QuickButton.install();
+        InSandboxHud.install();
+
+        // Bring any Sandboxes 1.0.0 layout forward now, while no world is open
+        // and its level.dat files are nobody else's. Off-thread so a big saves
+        // folder never delays the title screen; with nothing to migrate this is
+        // one directory listing.
+        Thread.ofPlatform().name("sandboxes-migrate").start(LegacyMigration::run);
+
         LOGGER.info("[Sandboxes] client init");
     }
 }

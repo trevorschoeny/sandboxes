@@ -3,7 +3,9 @@
   "minVersion": "0.8",
   "package": "com.trevorschoeny.sandboxes.mixin",
   "compatibilityLevel": "JAVA_25",
-  "client": [],
+  "client": [
+    "PauseScreenMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

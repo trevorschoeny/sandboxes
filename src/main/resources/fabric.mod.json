@@ -4,7 +4,9 @@
   "version": "${version}",
   "name": "Sandboxes",
   "description": "Creative-mode copies of your singleplayer world, for trying things without touching the real one.",
-  "authors": ["trevorschoeny"],
+  "authors": [
+    "trevorschoeny"
+  ],
   "license": "MIT",
   "icon": "assets/sandboxes/icon.png",
   "environment": "client",
@@ -12,12 +14,21 @@
     "sandboxes.mixins.json"
   ],
   "entrypoints": {
-    "client": ["com.trevorschoeny.sandboxes.SandboxesClient"]
+    "client": [
+      "com.trevorschoeny.sandboxes.SandboxesClient"
+    ],
+    "modmenu": [
+      "com.trevorschoeny.sandboxes.config.SandboxesConfigModMenu"
+    ]
   },
   "depends": {
     "fabricloader": ">=0.15.0",
     "fabric-api": "*",
     "minecraft": "~26.2",
     "menukit": ">=5.0.0 <6.0.0"
+  },
+  "suggests": {
+    "modmenu": "*",
+    "yet_another_config_lib_v3": "*"
   }
 }

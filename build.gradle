@@ -25,6 +25,8 @@ java {
 
 repositories {
     maven { url 'https://maven.fabricmc.net/' }
+    maven { url 'https://maven.terraformersmc.com/releases/' }
+    // YACL's 26.2 builds ship via the Modrinth maven only.
     maven { url 'https://api.modrinth.com/maven' }
 }
 
@@ -37,7 +39,13 @@ dependencies {
     // MenuKit: the pause-menu quick button (VanillaScreenPanelAdapter on PauseScreen).
     implementation project(':menukit')
 
-    // ponytail: YACL (JIJ) and ModMenu arrive with the config screen, not before.
+    // ModMenu: surfaces the config screen from the mods list. Soft dep.
+    compileOnly "com.terraformersmc:modmenu:20.0.1"
+    localRuntime "com.terraformersmc:modmenu:20.0.1"
+
+    // YACL: the config screen, JIJ'd into the jar (agency standard).
+    implementation "maven.modrinth:yacl:3.9.6+26.2-fabric"
+    include        "maven.modrinth:yacl:3.9.6+26.2-fabric"
 }
 
 loom {
