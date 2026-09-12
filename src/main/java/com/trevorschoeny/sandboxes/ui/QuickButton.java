@@ -79,8 +79,7 @@ public final class QuickButton {
         List<Sandbox> sandboxes = SandboxStore.list(levelId);
         if (sandboxes.isEmpty()) return;      // the button shouldn't be visible anyway
         Sandbox target = sandboxes.get(0);    // list() is most-recently-joined first
-        SandboxStore.markJoined(target);
-        WorldSwitch.openLevel(target.levelId());
+        WorldSwitch.enterSandbox(target);
     }
 
     private static boolean shouldShow() {

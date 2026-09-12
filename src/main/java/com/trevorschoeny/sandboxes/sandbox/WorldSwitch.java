@@ -8,6 +8,8 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 
+import java.nio.file.Path;
+
 import java.util.concurrent.ExecutionException;
 
 /** Leaving one world and opening another, and flushing a world to disk before it's copied. */
@@ -33,6 +35,28 @@ public final class WorldSwitch {
             // one, and say why in the log.
             SandboxesClient.LOGGER.error("[sandboxes] couldn't open {}", levelId);
             mc.gui.setScreen(new TitleScreen());
+        });
+    }
+
+    /**
+     * Joins a sandbox.
+     *
+     * <p>Every way in goes through here (the list's Join, a double-clicked row,
+     * the quick button), so the arrival is the same however the player got here:
+     * the world is saved, the player is put where they are standing right now,
+     * and only then does the sandbox open.
+     */
+    public static void enterSandbox(Sandbox sandbox) {
+        Minecraft mc = Minecraft.getInstance();
+        SandboxStore.markJoined(sandbox);
+        Path parentDir = SandboxStore.savesDir().resolve(sandbox.parentId());
+
+        // Saving blocks until the server has written everything, so it can't run
+        // on the client thread.
+        Thread.ofPlatform().name("sandboxes-enter").start(() -> {
+            saveCurrentWorld();
+            WorldFiles.placePlayerLikeParent(parentDir, sandbox.dir());
+            mc.execute(() -> openLevel(sandbox.levelId()));
         });
     }
 

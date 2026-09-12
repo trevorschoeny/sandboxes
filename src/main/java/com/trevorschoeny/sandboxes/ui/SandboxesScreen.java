@@ -164,11 +164,10 @@ public class SandboxesScreen extends Screen {
         if (selected != null && !busy) action.accept(selected);
     }
 
-    /** Joins a sandbox: stamp the time first so the list order and quick button follow. */
+    /** Joins a sandbox. WorldSwitch owns the arrival: save, place the player, open. */
     public void join(Sandbox sandbox) {
         if (busy) return;
-        SandboxStore.markJoined(sandbox);
-        WorldSwitch.openLevel(sandbox.levelId());
+        WorldSwitch.enterSandbox(sandbox);
     }
 
     private void create() {
