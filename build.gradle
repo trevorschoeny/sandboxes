@@ -30,6 +30,11 @@ repositories {
     maven { url 'https://api.modrinth.com/maven' }
 }
 
+// MenuKit 6.0.0 (§0062): MenuKit is universal with a compile-enforced client
+// source set. A project dependency alone sees only the common half, so a
+// client-only consumer of its UI also takes the client half by output.
+evaluationDependsOn(':menukit')
+
 dependencies {
     // 26.x: the game is unobfuscated, so no mappings line and plain java configurations.
     minecraft "com.mojang:minecraft:${property('minecraft_version')}"
@@ -38,6 +43,7 @@ dependencies {
 
     // MenuKit: the pause-menu quick button (VanillaScreenPanelAdapter on PauseScreen).
     implementation project(':menukit')
+    implementation rootProject.project(':menukit').sourceSets.client.output
 
     // ModMenu: surfaces the config screen from the mods list. Soft dep.
     compileOnly "com.terraformersmc:modmenu:20.0.1"

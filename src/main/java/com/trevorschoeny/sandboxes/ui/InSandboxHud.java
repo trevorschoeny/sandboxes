@@ -2,10 +2,10 @@ package com.trevorschoeny.sandboxes.ui;
 
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
 
-import com.trevlar.menukit.core.PanelStyle;
-import com.trevlar.menukit.core.TextLabel;
-import com.trevlar.menukit.hud.MKHudAnchor;
-import com.trevlar.menukit.hud.MKHudPanel;
+import com.trevlar.menukit.api.element.TextLabel;
+import com.trevlar.menukit.api.hud.HudPanel;
+import com.trevlar.menukit.api.panel.InsideRegion;
+import com.trevlar.menukit.api.panel.PanelStyle;
 
 import net.minecraft.network.chat.Component;
 
@@ -21,12 +21,12 @@ public final class InSandboxHud {
     private static final int RED = 0xFFFF4444;
 
     public static void install() {
-        MKHudPanel.builder("sandboxes:in-sandbox")
-                .anchor(MKHudAnchor.TOP_CENTER, 0, 4)
+        HudPanel.builder("sandboxes:in-sandbox")
+                .region(InsideRegion.TOP_CENTER)
                 .autoSize().padding(0)
                 .style(PanelStyle.NONE)
-                .showWhen(CurrentWorld::inSandbox)
-                .element(new TextLabel(0, 0, InSandboxHud::label, RED, true))
+                .visibleWhen(CurrentWorld::inSandbox)
+                .element(TextLabel.builder().text(InSandboxHud::label).color(RED).shadow(true).build())
                 .build();
     }
 

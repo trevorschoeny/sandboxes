@@ -6,11 +6,12 @@ import com.trevorschoeny.sandboxes.sandbox.Sandbox;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 
-import com.trevlar.menukit.core.Button;
-import com.trevlar.menukit.core.InsideRegion;
-import com.trevlar.menukit.core.Panel;
-import com.trevlar.menukit.core.PanelStyle;
-import com.trevlar.menukit.inject.VanillaScreenPanelAdapter;
+import com.trevlar.menukit.api.element.Button;
+import com.trevlar.menukit.api.panel.InsideRegion;
+import com.trevlar.menukit.api.panel.Panel;
+import com.trevlar.menukit.api.panel.PanelPosition;
+import com.trevlar.menukit.api.panel.PanelStyle;
+import com.trevlar.menukit.api.panel.VanillaScreenPanelAdapter;
 
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
@@ -24,7 +25,7 @@ import java.util.List;
  * back. It stays hidden when the world has no sandbox to jump to.
  *
  * <p>This is the one piece built with MenuKit. MenuKit confirmed on 2026-09-11
- * that a panel on {@code PauseScreen} is supported and that {@code showWhen}
+ * that a panel on {@code PauseScreen} is supported and that {@code visibleWhen}
  * hides rendering and clicks together.
  */
 public final class QuickButton {
@@ -56,14 +57,17 @@ public final class QuickButton {
     public static void install() {
         Panel panel = Panel.builder("sandboxes.quick")
                 .style(PanelStyle.NONE)
-                .add(Button.icon(0, 0, SIZE,
-                                () -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE,
-                                b -> click())
-                        .tooltip(Component.translatable("sandboxes.quick.tooltip")))
+                .position(PanelPosition.screenAnchor(InsideRegion.TOP_RIGHT))
+                .add(Button.builder()
+                        .icon(() -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE)
+                        .size(SIZE, SIZE)
+                        .onClick(QuickButton::click)
+                        .tooltip(Component.translatable("sandboxes.quick.tooltip"))
+                        .build())
                 .build()
-                .showWhen(QuickButton::shouldShow);
+                .visibleWhen(QuickButton::shouldShow);
 
-        new VanillaScreenPanelAdapter(panel, InsideRegion.TOP_RIGHT, 0)
+        new VanillaScreenPanelAdapter(panel, 0)
                 .on(PauseScreen.class);
     }
 
