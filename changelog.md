@@ -1,0 +1,3 @@
+Sandboxes 2.0.0 rewrites the mod for Minecraft 26.2 and MenuKit, replacing the 1.21.11 version. Open the pause menu and click Sandboxes, directly above Save and Quit to Title, to create, join, rename, sync or delete creative-mode copies of your world. A quick button in the top-right corner of the pause menu jumps to the sandbox you used last, and back. Nothing you do in a sandbox reaches your real world, and your own inventory and progress are there when you return. If you have sandboxes from the earlier version, they move into the new layout automatically, keeping their names, the first time you load Minecraft.
+
+Requires MenuKit 6.0.0 or newer, below 7.0.0, and Fabric API.
