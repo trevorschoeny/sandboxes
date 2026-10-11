@@ -24,9 +24,9 @@ import java.util.List;
  * corner. In a world it jumps to the sandbox used last; in a sandbox it goes
  * back. It stays hidden when the world has no sandbox to jump to.
  *
- * <p>This is the one piece built with MenuKit. MenuKit confirmed on 2026-09-11
- * that a panel on {@code PauseScreen} is supported and that {@code visibleWhen}
- * hides rendering and clicks together.
+ * <p>This is the one piece built with MenuKit, which supports a panel on
+ * {@code PauseScreen} and whose {@code visibleWhen} hides rendering and clicks
+ * together.
  */
 public final class QuickButton {
 
@@ -43,10 +43,9 @@ public final class QuickButton {
      * Cache for "does this world have a sandbox", with the world it was read for.
      *
      * <p>Visibility is asked every frame and the honest answer is a directory
-     * listing, so the answer is held briefly.
-     *
-     * ponytail: time-based cache. A sandbox created or deleted elsewhere shows up
-     * within a second, which is well inside the time it takes to reopen this menu.
+     * listing, so the answer is held briefly. A sandbox created or deleted
+     * elsewhere shows up within a second, well inside the time it takes to reopen
+     * this menu.
      */
     private static final long CACHE_MILLIS = 1000L;
     private static String cachedWorldId = null;

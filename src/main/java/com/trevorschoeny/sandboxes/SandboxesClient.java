@@ -14,8 +14,6 @@ import org.slf4j.LoggerFactory;
  * Sandboxes: creative-mode copies of a singleplayer world, made and joined from
  * the pause menu. Client-only, because every sandbox runs on this client's own
  * integrated server.
- *
- * Design: Leadership drive, mods/sandboxes/plan.md.
  */
 public class SandboxesClient implements ClientModInitializer {
     public static final String MOD_ID = "sandboxes";

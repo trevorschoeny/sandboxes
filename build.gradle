@@ -1,10 +1,6 @@
-// ═══════════════════════════════════════════════════════════════════════════
 // Sandboxes: creative-mode copies of a singleplayer world (client only).
-// Depends on MenuKit for the pause-menu quick button. Design lives in the
-// Leadership drive at mods/sandboxes/plan.md.
-//
-// Build: `./gradlew :sandboxes:build` from the workspace root.
-// ═══════════════════════════════════════════════════════════════════════════
+// Depends on MenuKit for the pause-menu quick button.
+// Build with `./gradlew :sandboxes:build` from the workspace root.
 
 plugins {
     id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT'
@@ -26,11 +22,11 @@ java {
 repositories {
     maven { url 'https://maven.fabricmc.net/' }
     maven { url 'https://maven.terraformersmc.com/releases/' }
-    // YACL's 26.2 builds ship via the Modrinth maven only.
+    // YACL's 26.2 builds are only on this Maven repository.
     maven { url 'https://api.modrinth.com/maven' }
 }
 
-// MenuKit 6.0.0 (§0062): MenuKit is universal with a compile-enforced client
+// Since MenuKit 6.0.0, MenuKit is universal with a compile-enforced client
 // source set. A project dependency alone sees only the common half, so a
 // client-only consumer of its UI also takes the client half by output.
 evaluationDependsOn(':menukit')
@@ -49,7 +45,7 @@ dependencies {
     compileOnly "com.terraformersmc:modmenu:20.0.1"
     localRuntime "com.terraformersmc:modmenu:20.0.1"
 
-    // YACL: the config screen, JIJ'd into the jar (agency standard).
+    // YACL: the config screen, bundled into the jar (jar-in-jar).
     implementation "maven.modrinth:yacl:3.9.6+26.2-fabric"
     include        "maven.modrinth:yacl:3.9.6+26.2-fabric"
 }
@@ -101,7 +97,7 @@ modrinth {
         required.project "menukit"
     }
 }
-// ci-cd.md stage 2: the shipped jar must self-report the bumped version. A jar that
+// The shipped jar must self-report the bumped version. A jar that
 // says the wrong version silently breaks every dependency gate against it, so this
 // fails the build instead of relying on someone remembering to unzip and look.
 tasks.register('verifyJarVersion') {
@@ -118,7 +114,7 @@ tasks.register('verifyJarVersion') {
 }
 build.dependsOn verifyJarVersion
 
-// ci-cd.md stage 2: this mod must pin MenuKit to the major it was built against.
+// This mod must pin MenuKit to the major it was built against.
 // The floor guarantees every MenuKit call it makes exists at load time; the ceiling stops a
 // future breaking major from loading against code that never saw it. Both halves matter:
 // a floor alone lets MenuKit 6.0.0 rename an API out from under a shipped jar, and the

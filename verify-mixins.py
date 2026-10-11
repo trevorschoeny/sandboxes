@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ci-cd.md stage 3: check every mixin target in this repo against the mapped Minecraft jar.
+"""Check every mixin target in this repo against the mapped Minecraft jar.
 
 Run from anywhere: `python3 verify-mixins.py` (lives at the repo root). Reads
 `minecraft_version` from the workspace gradle.properties two levels up, finds Loom's
@@ -14,9 +14,9 @@ Checks, per mixin class:
 Targets outside net.minecraft (Fabric API, YACL, ModMenu, our own mods) are reported
 as SKIP; the green build already proves those compile.
 
-ponytail: regex over source, not a Java parser. Good enough for our annotation style
-(one annotation per line, string literals inline). Upgrade to a real parser if a
-mixin ever slips past it.
+This is a regex over the source, not a Java parser. It is good enough for our
+annotation style (one annotation per line, string literals inline). Switch to a real
+parser if a mixin ever slips past it.
 """
 import glob, os, re, subprocess, sys
 

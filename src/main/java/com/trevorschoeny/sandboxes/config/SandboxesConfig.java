@@ -16,11 +16,11 @@ import java.nio.file.Path;
 
 /**
  * Sandboxes config. One option today: the quick-sandbox button in the pause
- * menu's top-right corner. On by default (plan.md, decided 2026-09-11) — it
- * sits in the pause menu rather than the shared inventory corner, so it isn't
- * competing with other mods for space.
+ * menu's top-right corner. On by default, because it sits in the pause menu
+ * rather than the shared inventory corner and so doesn't compete with other
+ * mods for space.
  *
- * <p>Same static-field + JSON shape as the other house mods; persisted to
+ * <p>Same static-field and JSON shape as the other Trevlar mods, persisted to
  * {@code config/sandboxes/config.json}.
  */
 public final class SandboxesConfig {

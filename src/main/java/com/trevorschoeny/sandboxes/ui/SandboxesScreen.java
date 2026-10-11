@@ -111,7 +111,7 @@ public class SandboxesScreen extends Screen {
         updateButtons();
     }
 
-    // ── Loading the list ─────────────────────────────────────────────────
+    // Loading the list
 
     /**
      * Rebuilds the rows. The listing and the per-sandbox size both read the
@@ -157,14 +157,14 @@ public class SandboxesScreen extends Screen {
         return (bytes / (1024L * 1024L)) + " MB";
     }
 
-    // ── Actions ──────────────────────────────────────────────────────────
+    // Actions
 
     private void withSelected(java.util.function.Consumer<Sandbox> action) {
         Sandbox selected = list == null ? null : list.selected();
         if (selected != null && !busy) action.accept(selected);
     }
 
-    /** Joins a sandbox. WorldSwitch owns the arrival: save, place the player, open. */
+    /** Joins a sandbox. WorldSwitch owns the arrival: stamp the join, save, open. */
     public void join(Sandbox sandbox) {
         if (busy) return;
         WorldSwitch.enterSandbox(sandbox);
@@ -236,7 +236,7 @@ public class SandboxesScreen extends Screen {
         void run() throws Exception;
     }
 
-    // ── Screen plumbing ──────────────────────────────────────────────────
+    // Screen plumbing
 
     private void updateButtons() {
         boolean hasSelection = list != null && list.selected() != null;

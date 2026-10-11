@@ -47,8 +47,7 @@ public final class WorldSwitch {
      * <p>Nothing about the player crosses at this point. A sandbox is forked
      * once, at create or sync, and from then on it is its own world with its own
      * position and inventory: joining puts the player back where they left off
-     * inside it, not where they are standing in the main world (Trev,
-     * 2026-09-12).
+     * inside it, not where they are standing in the main world.
      */
     public static void enterSandbox(Sandbox sandbox) {
         SandboxStore.markJoined(sandbox);

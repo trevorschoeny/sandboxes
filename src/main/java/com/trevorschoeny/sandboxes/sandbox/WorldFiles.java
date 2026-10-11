@@ -35,7 +35,7 @@ public final class WorldFiles {
     private static final List<String> SKIP_AT_ROOT =
             List.of(SandboxStore.SANDBOX_DIR, "session.lock");
 
-    // ── Copying ──────────────────────────────────────────────────────────
+    // Copying
 
     /**
      * Copies {@code source} to {@code dest}, minus the parent's own sandboxes
@@ -162,7 +162,7 @@ public final class WorldFiles {
         }
     }
 
-    // ── Making the copy a sandbox ────────────────────────────────────────
+    // Making the copy a sandbox
 
     /**
      * Turns a fresh copy into a sandbox: creative, commands on, named after the
@@ -216,9 +216,9 @@ public final class WorldFiles {
     private static void patchPlayerData(Path sandboxDir) {
         forEachPlayerFile(sandboxDir, file -> {
             CompoundTag tag = NbtIo.readCompressed(file, NbtAccounter.uncompressedQuota());
-            tag.putInt("playerGameType", 1);
             // A player file that still says survival beats the level's game type,
             // which is what put v2's first sandboxes in survival.
+            tag.putInt("playerGameType", 1);
             tag.remove("trevormod_sandboxes");
             NbtIo.writeCompressed(tag, file);
         });

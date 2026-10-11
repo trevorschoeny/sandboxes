@@ -24,7 +24,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * inside a sandbox.
  *
  * <p>MenuKit deliberately leaves the pause menu's button column alone, so this
- * mod owns the mixin (plan.md, decided 2026-09-11). Vanilla's own Save and Quit
+ * mod owns the mixin. Vanilla's own Save and Quit
  * button is a field, so this finds it without matching any text, then moves it
  * and everything below it down one row to make space.
  */

@@ -49,7 +49,7 @@ public final class SandboxStore {
     /**
      * The auto-generated name format, and the pattern that recognises one later.
      * A name still matching this is treated as untouched, so a sync re-stamps it;
-     * anything else is the player's own name and is preserved (plan.md).
+     * anything else is the player's own name and is preserved.
      */
     private static final DateTimeFormatter NAME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -59,7 +59,7 @@ public final class SandboxStore {
     private static final Pattern LEGACY_GENERATED_NAME =
             Pattern.compile("Sandbox [—-] \\w{3} \\d{1,2}, \\d{1,2}:\\d{2} [AP]M");
 
-    // ── Locations ────────────────────────────────────────────────────────
+    // Locations
 
     /** {@code saves/}. */
     public static Path savesDir() {
@@ -81,7 +81,7 @@ public final class SandboxStore {
         return sandboxLevelId.substring(0, sandboxLevelId.indexOf("/" + SANDBOX_DIR + "/"));
     }
 
-    // ── Reading ──────────────────────────────────────────────────────────
+    // Reading
 
     /**
      * Every sandbox of a world, most recently joined first. Never throws: a
@@ -136,7 +136,7 @@ public final class SandboxStore {
         Files.writeString(dir.resolve(META_FILE), GSON.toJson(root));
     }
 
-    // ── Operations ───────────────────────────────────────────────────────
+    // Operations
 
     /**
      * Copies the world into a new sandbox folder and returns it. The caller
@@ -193,7 +193,7 @@ public final class SandboxStore {
         }
     }
 
-    // ── Names ────────────────────────────────────────────────────────────
+    // Names
 
     private static String generatedName() {
         return LocalDateTime.now().format(NAME_FORMAT);
