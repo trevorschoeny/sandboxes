@@ -19,11 +19,11 @@ The quick button has its own switch, reachable from Mod Menu or from the Setting
 
 ## Install
 
-MenuKit 6.0.0 or newer, below 7.0.0, and Fabric API.
+MenuKit 6.1.0 or newer, below 7.0.0, and Fabric API.
 
 ## Compatibility
 
-Minecraft 26.2, Fabric, client only. Sandboxes copies your world on disk, so it only works with local singleplayer saves.
+Minecraft 26.3, Fabric, client only. Sandboxes copies your world on disk, so it only works with local singleplayer saves.
 
 ## License
 
