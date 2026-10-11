@@ -42,12 +42,12 @@ dependencies {
     implementation rootProject.project(':menukit').sourceSets.client.output
 
     // ModMenu: surfaces the config screen from the mods list. Soft dep.
-    compileOnly "com.terraformersmc:modmenu:20.0.1"
-    localRuntime "com.terraformersmc:modmenu:20.0.1"
+    compileOnly "com.terraformersmc:modmenu:21.0.0"
+    localRuntime "com.terraformersmc:modmenu:21.0.0"
 
     // YACL: the config screen, bundled into the jar (jar-in-jar).
-    implementation "maven.modrinth:yacl:3.9.6+26.2-fabric"
-    include        "maven.modrinth:yacl:3.9.6+26.2-fabric"
+    implementation "maven.modrinth:yacl:3.9.7+26.3-fabric"
+    include        "maven.modrinth:yacl:3.9.7+26.3-fabric"
 }
 
 loom {
