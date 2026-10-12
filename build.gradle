@@ -121,7 +121,7 @@ build.dependsOn verifyJarVersion
 // NoSuchMethodError hours into a session instead of a refusal at launch.
 // Commas are rejected outright: Fabric parses ">=5.0.0,<6.0.0" without complaint and the
 // resulting predicate then matches NO version at all, which silently disables the mod.
-// Amethyst (spec 4.1): one check per Kit, generalised from the old MenuKit-only check.
+// One check per Kit, generalised from the old MenuKit-only check.
 // menukit-containers fails outright, since Containers is SlotKit now.
 tasks.register('verifyKitRanges') {
     def src = file('src/main/resources/fabric.mod.json')
