@@ -19,7 +19,7 @@ The quick button has its own switch, reachable from Mod Menu or from the Setting
 
 ## Install
 
-MenuKit 6.1.0 or newer, below 7.0.0, and Fabric API.
+MenuKit 7.0.0 or newer, below 8.0.0, and Fabric API.
 
 ## Compatibility
 
