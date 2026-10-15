@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Feeds the touched-sections record. Every block change in a loaded chunk goes
+ * Feeds the touched-blocks record. Every block change in a loaded chunk goes
  * through {@code LevelChunk.setBlockState}, whatever caused it: the player,
  * explosions, pistons, flowing water.
  */

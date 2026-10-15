@@ -155,7 +155,7 @@ public final class SandboxStore {
         String name = generatedName();
         WorldFiles.makeSandboxLevel(source, dest, name);
         write(dest, name, 0L, "");
-        TouchedSections.startFresh(dest);
+        TouchedBlocks.startFresh(dest);
 
         SandboxesClient.LOGGER.info("[sandboxes] created {} of {}", id, worldId);
         return new Sandbox(id, name, 0L, dest, worldId, "");
@@ -176,14 +176,14 @@ public final class SandboxStore {
         write(sandbox.dir(), name, sandbox.lastJoined(), sandbox.overlayKey());
         // A fresh copy holds no sandbox work yet, and this also brings a sandbox
         // made before records existed into the tracked set.
-        TouchedSections.startFresh(sandbox.dir());
+        TouchedBlocks.startFresh(sandbox.dir());
 
         SandboxesClient.LOGGER.info("[sandboxes] synced {}", sandbox.id());
     }
 
     /**
      * Copies a sandbox as it is now into a new row: its blocks, its own player
-     * and its touched-sections record all come along, so the copy has the same
+     * and its touched-blocks record all come along, so the copy has the same
      * history as the original. Nothing is re-forked from the main world.
      *
      * <p>A name the player chose becomes "name (copy)"; a still-generated one

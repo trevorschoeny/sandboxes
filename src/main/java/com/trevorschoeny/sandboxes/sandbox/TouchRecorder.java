@@ -4,7 +4,6 @@ import com.trevorschoeny.sandboxes.SandboxesClient;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
@@ -16,11 +15,11 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * Keeps a sandbox's {@link TouchedSections} up to date while it runs.
+ * Keeps a sandbox's {@link TouchedBlocks} up to date while it runs.
  *
  * <p>Only active while the integrated server is running a tracked sandbox. Every
  * block change on that server lands here (see {@code LevelChunkMixin}) and costs
- * one hash-set insert. The record is written when the world saves and when it
+ * a hash-set insert or two. The record is written when the world saves and when it
  * closes.
  *
  * <p>It notes every change, not just the player's: growing crops, flowing water
@@ -32,7 +31,7 @@ public final class TouchRecorder {
     private TouchRecorder() {}
 
     private static @Nullable Path sandboxDir = null;
-    private static @Nullable TouchedSections record = null;
+    private static @Nullable TouchedBlocks record = null;
     private static boolean dirty = false;
 
     public static void install() {
@@ -54,7 +53,7 @@ public final class TouchRecorder {
         // A sandbox from before records existed stays untracked until its next
         // sync. Starting a record halfway would claim "nothing else changed",
         // which isn't known.
-        TouchedSections.load(root).ifPresent(loaded -> {
+        TouchedBlocks.load(root).ifPresent(loaded -> {
             sandboxDir = root;
             record = loaded;
             dirty = false;
@@ -63,18 +62,18 @@ public final class TouchRecorder {
 
     /** Called for every block change on the integrated server. */
     public static void touch(ResourceKey<Level> dimension, BlockPos pos) {
-        TouchedSections current = record;
+        TouchedBlocks current = record;
         if (current == null) return;
-        if (current.add(dimension.identifier().toString(), SectionPos.asLong(pos))) dirty = true;
+        if (current.add(dimension.identifier().toString(), pos.asLong())) dirty = true;
     }
 
     /** The live record of the sandbox being played, for the overlay; null when not in a tracked one. */
-    public static @Nullable TouchedSections live() {
+    public static @Nullable TouchedBlocks live() {
         return record;
     }
 
     private static void flush() {
-        TouchedSections current = record;
+        TouchedBlocks current = record;
         Path dir = sandboxDir;
         if (current == null || dir == null || !dirty) return;
         try {

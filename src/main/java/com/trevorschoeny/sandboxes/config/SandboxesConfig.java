@@ -31,9 +31,9 @@ public final class SandboxesConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static boolean quickButton = true;
-    // The diff overlay compares only sections the sandbox's touched-sections
-    // record lists, hiding main-world changes made after the fork. Off shows
-    // every difference. A switch so the two can be compared side by side.
+    // The diff overlay shows only blocks the sandbox's touched-blocks record
+    // lists, hiding main-world changes made after the fork. Off shows every
+    // difference. A switch so the two can be compared side by side.
     private static boolean overlaySandboxWorkOnly = true;
 
     private static boolean loaded = false;
