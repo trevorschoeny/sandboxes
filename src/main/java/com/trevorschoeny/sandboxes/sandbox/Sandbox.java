@@ -11,8 +11,10 @@ import java.nio.file.Path;
  * @param lastJoined epoch millis of the last join, 0 for never; orders the list
  * @param dir        the sandbox's world folder
  * @param parentId   level id of the world this is a sandbox of
+ * @param overlayKey this sandbox's overlay key as Keybindery stores a chord, or "" for none
  */
-public record Sandbox(String id, String name, long lastJoined, Path dir, String parentId) {
+public record Sandbox(String id, String name, long lastJoined, Path dir, String parentId,
+                      String overlayKey) {
 
     /** The level id vanilla opens this sandbox with: {@code <world>/sandboxes/<id>}. */
     public String levelId() {

@@ -29,6 +29,7 @@
   },
   "suggests": {
     "modmenu": "*",
-    "yet_another_config_lib_v3": "*"
+    "yet_another_config_lib_v3": "*",
+    "keybindery": ">=1.3.0"
   }
 }

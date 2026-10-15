@@ -114,25 +114,28 @@ public final class SandboxStore {
         String id = dir.getFileName().toString();
         String name = id;
         long lastJoined = 0L;
+        String overlayKey = "";
         Path meta = dir.resolve(META_FILE);
         if (Files.exists(meta)) {
             try {
                 JsonObject root = JsonParser.parseString(Files.readString(meta)).getAsJsonObject();
                 if (root.has("name")) name = root.get("name").getAsString();
                 if (root.has("lastJoined")) lastJoined = root.get("lastJoined").getAsLong();
+                if (root.has("overlayKey")) overlayKey = root.get("overlayKey").getAsString();
             } catch (Exception e) {
                 // A corrupt metadata file must not hide a sandbox the player can
                 // still join, so the folder name stands in for the display name.
                 SandboxesClient.LOGGER.error("[sandboxes] couldn't read {}", meta, e);
             }
         }
-        return new Sandbox(id, name, lastJoined, dir, worldId);
+        return new Sandbox(id, name, lastJoined, dir, worldId, overlayKey);
     }
 
-    private static void write(Path dir, String name, long lastJoined) throws IOException {
+    private static void write(Path dir, String name, long lastJoined, String overlayKey) throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("name", name);
         root.addProperty("lastJoined", lastJoined);
+        if (!overlayKey.isEmpty()) root.addProperty("overlayKey", overlayKey);
         Files.writeString(dir.resolve(META_FILE), GSON.toJson(root));
     }
 
@@ -151,11 +154,11 @@ public final class SandboxStore {
         WorldFiles.copyWorld(source, dest);
         String name = generatedName();
         WorldFiles.makeSandboxLevel(source, dest, name);
-        write(dest, name, 0L);
+        write(dest, name, 0L, "");
         TouchedSections.startFresh(dest);
 
         SandboxesClient.LOGGER.info("[sandboxes] created {} of {}", id, worldId);
-        return new Sandbox(id, name, 0L, dest, worldId);
+        return new Sandbox(id, name, 0L, dest, worldId, "");
     }
 
     /**
@@ -170,7 +173,7 @@ public final class SandboxStore {
         WorldFiles.deleteDirectory(sandbox.dir());
         WorldFiles.copyWorld(source, sandbox.dir());
         WorldFiles.makeSandboxLevel(source, sandbox.dir(), name);
-        write(sandbox.dir(), name, sandbox.lastJoined());
+        write(sandbox.dir(), name, sandbox.lastJoined(), sandbox.overlayKey());
         // A fresh copy holds no sandbox work yet, and this also brings a sandbox
         // made before records existed into the tracked set.
         TouchedSections.startFresh(sandbox.dir());
@@ -192,10 +195,11 @@ public final class SandboxStore {
         WorldFiles.copyWorld(source.dir(), dest);
 
         String name = isGeneratedName(source.name()) ? generatedName() : source.name() + " (copy)";
-        write(dest, name, 0L);
+        // The key stays with the original: one key showing two sandboxes would be ambiguous.
+        write(dest, name, 0L, "");
 
         SandboxesClient.LOGGER.info("[sandboxes] duplicated {} as {}", source.id(), id);
-        return new Sandbox(id, name, 0L, dest, source.parentId());
+        return new Sandbox(id, name, 0L, dest, source.parentId(), "");
     }
 
     public static void delete(Sandbox sandbox) throws IOException {
@@ -204,17 +208,27 @@ public final class SandboxStore {
     }
 
     public static void rename(Sandbox sandbox, String newName) throws IOException {
-        write(sandbox.dir(), newName, sandbox.lastJoined());
+        write(sandbox.dir(), newName, sandbox.lastJoined(), sandbox.overlayKey());
     }
 
     /** Stamps the join time, so the list order and the quick button follow the player. */
     public static void markJoined(Sandbox sandbox) {
         try {
-            write(sandbox.dir(), sandbox.name(), System.currentTimeMillis());
+            write(sandbox.dir(), sandbox.name(), System.currentTimeMillis(), sandbox.overlayKey());
         } catch (IOException e) {
             // Losing this only costs list ordering, never data: don't fail the join.
             SandboxesClient.LOGGER.error("[sandboxes] couldn't stamp join time for {}", sandbox.id(), e);
         }
+    }
+
+    /** Sets this sandbox's overlay key; "" clears it. */
+    public static void setOverlayKey(Sandbox sandbox, String overlayKey) throws IOException {
+        write(sandbox.dir(), sandbox.name(), sandbox.lastJoined(), overlayKey);
+    }
+
+    /** The sandbox with this level id, read fresh from disk. */
+    public static Sandbox readSandbox(String sandboxLevelId) {
+        return read(savesDir().resolve(sandboxLevelId), parentOf(sandboxLevelId));
     }
 
     // Names

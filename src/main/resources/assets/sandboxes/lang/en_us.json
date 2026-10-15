@@ -32,5 +32,7 @@
   "sandboxes.overlay.mode.untracked": "all differences, no record for this sandbox yet",
   "key.category.sandboxes.sandboxes": "Sandboxes",
   "key.sandboxes.hop": "Hop to sandbox and back",
-  "key.sandboxes.overlay": "Toggle difference overlay"
+  "sandboxes.binding.overlay": "Sandbox overlay: %s",
+  "sandboxes.button.overlay_key.tooltip": "This sandbox's overlay key. In your world it shows this sandbox's overlay; inside the sandbox it compares with your world. Right-click to clear.",
+  "sandboxes.screen.key_conflict": "Overlay key also used by: %s"
 }

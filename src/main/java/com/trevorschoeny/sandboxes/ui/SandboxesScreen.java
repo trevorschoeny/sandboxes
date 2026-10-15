@@ -3,12 +3,14 @@ package com.trevorschoeny.sandboxes.ui;
 import com.trevorschoeny.sandboxes.SandboxesClient;
 import com.trevorschoeny.sandboxes.config.SandboxesConfigScreen;
 import com.trevorschoeny.sandboxes.overlay.Overlay;
+import com.trevorschoeny.sandboxes.overlay.OverlayKeys;
 import com.trevorschoeny.sandboxes.sandbox.Sandbox;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldFiles;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -47,6 +49,12 @@ public class SandboxesScreen extends Screen {
     private Button joinButton;
     private Button overlayButton;
     private Button duplicateButton;
+    /** Keybindery's key button for the selected sandbox; rebuilt when the selection changes. */
+    private @Nullable AbstractWidget keyButton = null;
+    private @Nullable String keyButtonFor = null;
+    private int keyX, keyY, keyWidth;
+    /** "Overlay key also used by ..." for the selected sandbox, or null. */
+    private @Nullable Component keyConflict = null;
     private Button syncButton;
     private Button renameButton;
     private Button deleteButton;
@@ -90,25 +98,34 @@ public class SandboxesScreen extends Screen {
         int row2 = row1 + 24;
         int row3 = row2 + 24;
 
+        // Row one: Join, Overlay, and the selected sandbox's overlay key.
         joinButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.join"), b -> withSelected(this::join))
                 .bounds(left, row1, actionWidth, 20).build());
         overlayButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.overlay_off"), b -> withSelected(this::toggleOverlay))
                 .bounds(left + actionWidth + gap, row1, actionWidth, 20).build());
+        keyX = left + (actionWidth + gap) * 2;
+        keyY = row1;
+        keyWidth = actionWidth;
+        keyButton = null;
+        keyButtonFor = null;
+
+        // Row two: the rest of what can be done to the selected sandbox.
+        int smallWidth = 72;
+        int left2 = centerX - (smallWidth * 4 + gap * 3) / 2;
         duplicateButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.duplicate"), b -> withSelected(this::duplicate))
-                .bounds(left + (actionWidth + gap) * 2, row1, actionWidth, 20).build());
-
+                .bounds(left2, row2, smallWidth, 20).build());
         renameButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.rename"), b -> withSelected(this::rename))
-                .bounds(left, row2, actionWidth, 20).build());
+                .bounds(left2 + smallWidth + gap, row2, smallWidth, 20).build());
         syncButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.sync"), b -> withSelected(this::confirmSync))
-                .bounds(left + actionWidth + gap, row2, actionWidth, 20).build());
+                .bounds(left2 + (smallWidth + gap) * 2, row2, smallWidth, 20).build());
         deleteButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.delete"), b -> withSelected(this::confirmDelete))
-                .bounds(left + (actionWidth + gap) * 2, row2, actionWidth, 20).build());
+                .bounds(left2 + (smallWidth + gap) * 3, row2, smallWidth, 20).build());
 
         createButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.create"), b -> create())
@@ -146,6 +163,7 @@ public class SandboxesScreen extends Screen {
                     rows.add(list.new Row(sandboxes.get(i), details.get(i)));
                 }
                 list.setRows(rows);
+                keyButtonFor = null;
                 updateButtons();
             });
         });
@@ -233,6 +251,48 @@ public class SandboxesScreen extends Screen {
         updateButtons();
     }
 
+    /**
+     * Puts Keybindery's key button in its slot for whichever sandbox is selected.
+     * The button shows one chord, so a new selection gets a new button.
+     */
+    private void updateKeyButton() {
+        Sandbox selected = list == null ? null : list.selected();
+        String forId = selected == null ? null : selected.id();
+        if (java.util.Objects.equals(forId, keyButtonFor) && (keyButton != null || forId == null)) return;
+        if (keyButton != null) removeWidget(keyButton);
+        keyButton = null;
+        keyButtonFor = forId;
+        keyConflict = null;
+        if (selected == null) return;
+
+        keyButton = OverlayKeys.button(keyX, keyY, keyWidth, 20, selected, chord -> setKey(selected, chord));
+        if (keyButton != null) {
+            keyButton.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                    Component.translatable("sandboxes.button.overlay_key.tooltip")));
+            addRenderableWidget(keyButton);
+            keyConflict = conflictLine(selected);
+        }
+    }
+
+    private void setKey(Sandbox sandbox, com.trevorschoeny.keybindery.api.Chord chord) {
+        try {
+            SandboxStore.setOverlayKey(sandbox, chord.serialize());
+        } catch (java.io.IOException e) {
+            SandboxesClient.LOGGER.error("[sandboxes] couldn't save the overlay key for {}", sandbox.id(), e);
+            return;
+        }
+        OverlayKeys.refresh();
+        // The rows hold the old key; reload them, keeping the button for this sandbox.
+        keyButtonFor = null;
+        refresh();
+    }
+
+    private static @Nullable Component conflictLine(Sandbox sandbox) {
+        var conflicts = OverlayKeys.conflicts(sandbox);
+        if (conflicts.isEmpty()) return null;
+        return Component.translatable("sandboxes.screen.key_conflict", conflicts.get(0).label());
+    }
+
     private void duplicate(Sandbox sandbox) {
         runOnDisk(Component.translatable("sandboxes.status.duplicating"), () -> SandboxStore.duplicate(sandbox));
     }
@@ -285,6 +345,7 @@ public class SandboxesScreen extends Screen {
     public void tick() {
         super.tick();
         updateButtons();
+        updateKeyButton();
         if (pendingScreen != null) {
             Screen next = pendingScreen;
             pendingScreen = null;
@@ -306,6 +367,9 @@ public class SandboxesScreen extends Screen {
         Component message = status;
         if (message != null) {
             graphics.text(font, message, (width - font.width(message)) / 2,
+                    height - FOOTER_HEIGHT - 14, 0xFFFFFF55, true);
+        } else if (keyConflict != null) {
+            graphics.text(font, keyConflict, (width - font.width(keyConflict)) / 2,
                     height - FOOTER_HEIGHT - 14, 0xFFFFFF55, true);
         } else if (list != null && list.children().isEmpty()) {
             Component empty = Component.translatable("sandboxes.screen.empty");

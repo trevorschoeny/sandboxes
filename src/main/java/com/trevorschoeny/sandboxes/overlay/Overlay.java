@@ -27,7 +27,6 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -133,23 +132,18 @@ public final class Overlay {
     }
 
     /**
-     * The overlay key. Inside a sandbox it compares with the main world; in a
-     * world it shows the sandbox joined most recently.
+     * Inside a sandbox: compare it with the main world, or turn that off. This is
+     * what a sandbox's own key does while the player is inside it.
      */
-    public static void toggleDefault() {
+    public static void toggleAgainstParent() {
         if (target != null) {
             off();
             return;
         }
         String levelId = CurrentWorld.levelId();
-        if (levelId == null) return;
-        if (SandboxStore.isSandbox(levelId)) {
-            String parent = SandboxStore.parentOf(levelId);
-            start(new Target(parent, SandboxStore.savesDir().resolve(parent), null, TouchRecorder::live));
-            return;
-        }
-        List<Sandbox> sandboxes = SandboxStore.list(levelId);
-        if (!sandboxes.isEmpty()) toggleFor(sandboxes.get(0));
+        if (levelId == null || !SandboxStore.isSandbox(levelId)) return;
+        String parent = SandboxStore.parentOf(levelId);
+        start(new Target(parent, SandboxStore.savesDir().resolve(parent), null, TouchRecorder::live));
     }
 
     public static boolean showing(Sandbox sandbox) {

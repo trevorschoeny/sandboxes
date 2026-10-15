@@ -30,6 +30,7 @@ repositories {
 // source set. A project dependency alone sees only the common half, so a
 // client-only consumer of its UI also takes the client half by output.
 evaluationDependsOn(':menukit')
+evaluationDependsOn(':keybindery')
 
 dependencies {
     // 26.x: the game is unobfuscated, so no mappings line and plain java configurations.
@@ -40,6 +41,15 @@ dependencies {
     // MenuKit: the pause-menu quick button (VanillaScreenPanelAdapter on PauseScreen).
     implementation project(':menukit')
     implementation rootProject.project(':menukit').sourceSets.client.output
+
+    // Keybindery's API, for each sandbox's own overlay key. Bundled, so Sandboxes
+    // runs without Keybindery installed: the API's stub turns the keys off and
+    // the list hides the key button.
+    implementation project(':keybindery-api')
+    include        project(':keybindery-api')
+    // The real Keybindery in the dev client only, so the keys can be tried.
+    localRuntime project(':keybindery')
+    localRuntime rootProject.project(':keybindery').sourceSets.client.output
 
     // ModMenu: surfaces the config screen from the mods list. Soft dep.
     compileOnly "com.terraformersmc:modmenu:21.0.0"
