@@ -3,29 +3,34 @@
   "sandboxes.pause.return": "Return to %s",
   "sandboxes.quick.tooltip": "Quick sandbox",
   "sandboxes.hud.in_sandbox": "Sandbox of world %s",
-
   "sandboxes.screen.title": "Sandboxes of %s",
   "sandboxes.screen.empty": "No sandboxes yet. A sandbox is a creative copy of this world.",
-
   "sandboxes.button.join": "Join",
   "sandboxes.button.sync": "Sync",
   "sandboxes.button.rename": "Rename",
   "sandboxes.button.delete": "Delete",
   "sandboxes.button.create": "Create New Sandbox",
   "sandboxes.button.settings": "Settings",
-
   "sandboxes.row.joined": "joined %s  ·  %s",
   "sandboxes.row.never": "never joined  ·  %s",
-
   "sandboxes.status.creating": "Creating sandbox...",
   "sandboxes.status.syncing": "Syncing sandbox...",
   "sandboxes.status.deleting": "Deleting sandbox...",
-
   "sandboxes.confirm.sync.title": "Sync this sandbox?",
   "sandboxes.confirm.sync.body": "%s is replaced with a fresh copy of this world. Anything built in it is lost.",
   "sandboxes.confirm.delete.title": "Delete this sandbox?",
   "sandboxes.confirm.delete.body": "%s is deleted for good. This can't be undone.",
-
   "sandboxes.rename.title": "Rename sandbox",
-  "sandboxes.rename.field": "Sandbox name"
+  "sandboxes.rename.field": "Sandbox name",
+  "sandboxes.button.overlay_on": "Overlay: On",
+  "sandboxes.button.overlay_off": "Overlay: Off",
+  "sandboxes.button.duplicate": "Duplicate",
+  "sandboxes.status.duplicating": "Duplicating sandbox...",
+  "sandboxes.overlay.hud": "Overlay: %s (%s)",
+  "sandboxes.overlay.mode.work": "sandbox work only",
+  "sandboxes.overlay.mode.all": "all differences",
+  "sandboxes.overlay.mode.untracked": "all differences, no record for this sandbox yet",
+  "key.category.sandboxes.sandboxes": "Sandboxes",
+  "key.sandboxes.hop": "Hop to sandbox and back",
+  "key.sandboxes.overlay": "Toggle difference overlay"
 }

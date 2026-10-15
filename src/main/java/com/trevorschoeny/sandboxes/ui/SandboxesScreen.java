@@ -2,6 +2,7 @@ package com.trevorschoeny.sandboxes.ui;
 
 import com.trevorschoeny.sandboxes.SandboxesClient;
 import com.trevorschoeny.sandboxes.config.SandboxesConfigScreen;
+import com.trevorschoeny.sandboxes.overlay.Overlay;
 import com.trevorschoeny.sandboxes.sandbox.Sandbox;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldFiles;
@@ -37,13 +38,15 @@ public class SandboxesScreen extends Screen {
 
     private static final int ROW_HEIGHT = 32;
     private static final int LIST_TOP = 32;
-    private static final int FOOTER_HEIGHT = 64;
+    private static final int FOOTER_HEIGHT = 88;
 
     private final Screen parent;
     private final String worldId;
 
     private SandboxList list;
     private Button joinButton;
+    private Button overlayButton;
+    private Button duplicateButton;
     private Button syncButton;
     private Button renameButton;
     private Button deleteButton;
@@ -77,35 +80,45 @@ public class SandboxesScreen extends Screen {
                 LIST_TOP, ROW_HEIGHT);
         addRenderableWidget(list);
 
+        // Three rows: what to do with the selected sandbox, two rows of three,
+        // then the screen's own buttons.
         int centerX = width / 2;
-        int actionsY = height - FOOTER_HEIGHT + 8;
-        int actionWidth = 72;
+        int actionWidth = 98;
         int gap = 4;
-        int actionsLeft = centerX - (actionWidth * 4 + gap * 3) / 2;
+        int left = centerX - (actionWidth * 3 + gap * 2) / 2;
+        int row1 = height - FOOTER_HEIGHT + 8;
+        int row2 = row1 + 24;
+        int row3 = row2 + 24;
 
         joinButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.join"), b -> withSelected(this::join))
-                .bounds(actionsLeft, actionsY, actionWidth, 20).build());
-        syncButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.sync"), b -> withSelected(this::confirmSync))
-                .bounds(actionsLeft + actionWidth + gap, actionsY, actionWidth, 20).build());
+                .bounds(left, row1, actionWidth, 20).build());
+        overlayButton = addRenderableWidget(Button.builder(
+                        Component.translatable("sandboxes.button.overlay_off"), b -> withSelected(this::toggleOverlay))
+                .bounds(left + actionWidth + gap, row1, actionWidth, 20).build());
+        duplicateButton = addRenderableWidget(Button.builder(
+                        Component.translatable("sandboxes.button.duplicate"), b -> withSelected(this::duplicate))
+                .bounds(left + (actionWidth + gap) * 2, row1, actionWidth, 20).build());
+
         renameButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.rename"), b -> withSelected(this::rename))
-                .bounds(actionsLeft + (actionWidth + gap) * 2, actionsY, actionWidth, 20).build());
+                .bounds(left, row2, actionWidth, 20).build());
+        syncButton = addRenderableWidget(Button.builder(
+                        Component.translatable("sandboxes.button.sync"), b -> withSelected(this::confirmSync))
+                .bounds(left + actionWidth + gap, row2, actionWidth, 20).build());
         deleteButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.delete"), b -> withSelected(this::confirmDelete))
-                .bounds(actionsLeft + (actionWidth + gap) * 3, actionsY, actionWidth, 20).build());
+                .bounds(left + (actionWidth + gap) * 2, row2, actionWidth, 20).build());
 
-        int bottomY = actionsY + 24;
         createButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.create"), b -> create())
-                .bounds(centerX - 154, bottomY, 150, 20).build());
+                .bounds(centerX - 154, row3, 150, 20).build());
         addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.settings"),
                         b -> pendingScreen = SandboxesConfigScreen.create(this))
-                .bounds(centerX + 4, bottomY, 72, 20).build());
+                .bounds(centerX + 4, row3, 72, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-                .bounds(centerX + 80, bottomY, 74, 20).build());
+                .bounds(centerX + 80, row3, 74, 20).build());
 
         refresh();
         updateButtons();
@@ -185,6 +198,7 @@ public class SandboxesScreen extends Screen {
                 confirmed -> {
                     minecraft.gui.setScreen(this);
                     if (confirmed) {
+                        Overlay.forget(sandbox);
                         runOnDisk(Component.translatable("sandboxes.status.syncing"), () -> {
                             WorldSwitch.saveCurrentWorld();
                             SandboxStore.sync(sandbox);
@@ -200,6 +214,7 @@ public class SandboxesScreen extends Screen {
                 confirmed -> {
                     minecraft.gui.setScreen(this);
                     if (confirmed) {
+                        Overlay.forget(sandbox);
                         runOnDisk(Component.translatable("sandboxes.status.deleting"),
                                 () -> SandboxStore.delete(sandbox));
                     }
@@ -210,6 +225,16 @@ public class SandboxesScreen extends Screen {
 
     private void rename(Sandbox sandbox) {
         pendingScreen = new RenameScreen(this, sandbox);
+    }
+
+    /** One overlay at a time: turning this one on replaces whichever was showing. */
+    private void toggleOverlay(Sandbox sandbox) {
+        Overlay.toggleFor(sandbox);
+        updateButtons();
+    }
+
+    private void duplicate(Sandbox sandbox) {
+        runOnDisk(Component.translatable("sandboxes.status.duplicating"), () -> SandboxStore.duplicate(sandbox));
     }
 
     /** Anything that writes to the disk: off-thread, with the buttons off and a message up. */
@@ -242,6 +267,14 @@ public class SandboxesScreen extends Screen {
         boolean hasSelection = list != null && list.selected() != null;
         boolean enabled = hasSelection && !busy;
         if (joinButton != null) joinButton.active = enabled;
+        if (duplicateButton != null) duplicateButton.active = enabled;
+        if (overlayButton != null) {
+            overlayButton.active = enabled;
+            Sandbox selected = hasSelection ? list.selected() : null;
+            boolean on = selected != null && Overlay.showing(selected);
+            overlayButton.setMessage(Component.translatable(
+                    on ? "sandboxes.button.overlay_on" : "sandboxes.button.overlay_off"));
+        }
         if (syncButton != null) syncButton.active = enabled;
         if (renameButton != null) renameButton.active = enabled;
         if (deleteButton != null) deleteButton.active = enabled;

@@ -2,7 +2,6 @@ package com.trevorschoeny.sandboxes.ui;
 
 import com.trevorschoeny.sandboxes.config.SandboxesConfig;
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
-import com.trevorschoeny.sandboxes.sandbox.Sandbox;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 
@@ -17,7 +16,6 @@ import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
-import java.util.List;
 
 /**
  * The quick-sandbox button: one small button in the pause menu's top-right
@@ -60,7 +58,7 @@ public final class QuickButton {
                 .add(Button.builder()
                         .icon(() -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE)
                         .size(SIZE, SIZE)
-                        .onClick(QuickButton::click)
+                        .onClick(WorldSwitch::hop)
                         .tooltip(Component.translatable("sandboxes.quick.tooltip"))
                         .build())
                 .build()
@@ -68,21 +66,6 @@ public final class QuickButton {
 
         new VanillaScreenPanelAdapter(panel, 0)
                 .on(PauseScreen.class);
-    }
-
-    /** In a sandbox: go back. In a world: join the sandbox used last. */
-    private static void click() {
-        String levelId = CurrentWorld.levelId();
-        if (levelId == null) return;
-
-        if (SandboxStore.isSandbox(levelId)) {
-            WorldSwitch.openLevel(SandboxStore.parentOf(levelId));
-            return;
-        }
-        List<Sandbox> sandboxes = SandboxStore.list(levelId);
-        if (sandboxes.isEmpty()) return;      // the button shouldn't be visible anyway
-        Sandbox target = sandboxes.get(0);    // list() is most-recently-joined first
-        WorldSwitch.enterSandbox(target);
     }
 
     private static boolean shouldShow() {

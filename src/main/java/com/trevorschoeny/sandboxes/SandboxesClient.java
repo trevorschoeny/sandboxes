@@ -1,8 +1,13 @@
 package com.trevorschoeny.sandboxes;
 
 import com.trevorschoeny.sandboxes.config.SandboxesConfig;
+import com.trevorschoeny.sandboxes.overlay.Overlay;
+import com.trevorschoeny.sandboxes.overlay.OverlayHud;
+import com.trevorschoeny.sandboxes.overlay.OverlayRenderer;
 import com.trevorschoeny.sandboxes.sandbox.LegacyMigration;
+import com.trevorschoeny.sandboxes.sandbox.TouchRecorder;
 import com.trevorschoeny.sandboxes.ui.InSandboxHud;
+import com.trevorschoeny.sandboxes.ui.Keys;
 import com.trevorschoeny.sandboxes.ui.QuickButton;
 
 import net.fabricmc.api.ClientModInitializer;
@@ -24,6 +29,11 @@ public class SandboxesClient implements ClientModInitializer {
         SandboxesConfig.load();
         QuickButton.install();
         InSandboxHud.install();
+        Keys.install();
+        TouchRecorder.install();
+        Overlay.install();
+        OverlayRenderer.install();
+        OverlayHud.install();
 
         // Bring any Sandboxes 1.0.0 layout forward once the client is up: still
         // before any world is open, so the level.dat files it rewrites are

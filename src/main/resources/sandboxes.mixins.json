@@ -4,6 +4,8 @@
   "package": "com.trevorschoeny.sandboxes.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "ClientLevelMixin",
+    "LevelChunkMixin",
     "PauseScreenMixin"
   ],
   "injectors": {

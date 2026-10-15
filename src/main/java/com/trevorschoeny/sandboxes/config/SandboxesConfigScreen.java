@@ -27,6 +27,16 @@ public final class SandboxesConfigScreen {
                 .controller(opt -> BooleanControllerBuilder.create(opt).yesNoFormatter())
                 .build();
 
+        Option<Boolean> workOnly = Option.<Boolean>createBuilder()
+                .name(Component.literal("Overlay shows only sandbox work"))
+                .description(OptionDescription.of(Component.literal(
+                        "On: the overlay only looks at places you changed while inside the sandbox, "
+                                + "so building or mining in your world after making the sandbox doesn't "
+                                + "light up. Off: every difference between the two worlds shows.")))
+                .binding(true, SandboxesConfig::overlaySandboxWorkOnly, SandboxesConfig::setOverlaySandboxWorkOnly)
+                .controller(opt -> BooleanControllerBuilder.create(opt).yesNoFormatter())
+                .build();
+
         ConfigCategory features = ConfigCategory.createBuilder()
                 .name(Component.literal("Features"))
                 .group(OptionGroup.createBuilder()
@@ -34,6 +44,7 @@ public final class SandboxesConfigScreen {
                         .description(OptionDescription.of(Component.literal(
                                 "Creative-mode copies of your world.")))
                         .option(quick)
+                        .option(workOnly)
                         .build())
                 .build();
 

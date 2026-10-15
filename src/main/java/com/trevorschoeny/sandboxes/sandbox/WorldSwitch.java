@@ -8,8 +8,7 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 
-import java.nio.file.Path;
-
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /** Leaving one world and opening another, and flushing a world to disk before it's copied. */
@@ -52,6 +51,26 @@ public final class WorldSwitch {
     public static void enterSandbox(Sandbox sandbox) {
         SandboxStore.markJoined(sandbox);
         openLevel(sandbox.levelId());
+    }
+
+    /**
+     * The quick hop between a world and its sandbox, shared by the pause-menu
+     * quick button and the hop key so they can't drift apart.
+     *
+     * <p>Inside a sandbox it returns to the main world. In a world it joins the
+     * sandbox joined most recently. In a world with no sandboxes it does nothing:
+     * making a whole world copy from a stray keypress would be too much.
+     */
+    public static void hop() {
+        String levelId = CurrentWorld.levelId();
+        if (levelId == null) return;
+        if (SandboxStore.isSandbox(levelId)) {
+            openLevel(SandboxStore.parentOf(levelId));
+            return;
+        }
+        List<Sandbox> sandboxes = SandboxStore.list(levelId);
+        if (sandboxes.isEmpty()) return;
+        enterSandbox(sandboxes.get(0));    // list() is most recently joined first
     }
 
     /**

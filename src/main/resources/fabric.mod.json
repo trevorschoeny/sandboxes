@@ -25,7 +25,7 @@
     "fabricloader": ">=0.15.0",
     "fabric-api": "*",
     "minecraft": "~26.3",
-    "menukit": ">=7.0.0 <8.0.0"
+    "menukit": ">=7.1.0 <8.0.0"
   },
   "suggests": {
     "modmenu": "*",
