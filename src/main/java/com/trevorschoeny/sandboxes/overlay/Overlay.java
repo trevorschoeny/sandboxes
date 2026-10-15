@@ -1,12 +1,9 @@
 package com.trevorschoeny.sandboxes.overlay;
 
 import com.trevorschoeny.sandboxes.SandboxesClient;
-import com.trevorschoeny.sandboxes.config.SandboxesConfig;
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
 import com.trevorschoeny.sandboxes.sandbox.Sandbox;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
-import com.trevorschoeny.sandboxes.sandbox.TouchRecorder;
-import com.trevorschoeny.sandboxes.sandbox.TouchedBlocks;
 
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 
@@ -31,7 +28,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Supplier;
 
 /**
  * The diff overlay: shows, inside the world you're in, where the other world
@@ -53,11 +49,11 @@ import java.util.function.Supplier;
  * world has a block where you have air; red, you have a block where it has air;
  * yellow, a different block.
  *
- * <p>With "only sandbox work" on, only blocks the sandbox's touched-blocks
- * record lists can show, so changes made in the main world after the fork stay
- * hidden even right next to sandbox work. Only sections holding a recorded block
- * are scanned. A sandbox with no record (made before records existed) shows
- * every difference.
+ * <p>Every difference shows, whoever made it. Telling sandbox work apart from
+ * main-world changes since the fork was tried and dropped: once the player
+ * starts building from the overlay, which side "meant" a change can't be known,
+ * and hiding any difference hides the feedback a builder needs. A main world
+ * that has moved on is what Sync is for.
  *
  * ponytail: compares blocks, not block states, so a rotated stair or a
  * different redstone power level doesn't show. Comparing full states lit up
@@ -89,10 +85,8 @@ public final class Overlay {
      * What the overlay compares against.
      *
      * @param sandboxId the sandbox being shown, or null when showing the main world from inside a sandbox
-     * @param record    which sections are sandbox work; null when untracked
      */
-    private record Target(String label, Path otherRoot, @Nullable String sandboxId,
-                          Supplier<@Nullable TouchedBlocks> record) {}
+    private record Target(String label, Path otherRoot, @Nullable String sandboxId) {}
 
     /** Per-tick budget for handing sections to the worker, so turning on never hitches. */
     private static final long TICK_BUDGET_NANOS = 2_000_000L;
@@ -128,8 +122,7 @@ public final class Overlay {
             off();
             return;
         }
-        TouchedBlocks record = TouchedBlocks.load(sandbox.dir()).orElse(null);
-        start(new Target(sandbox.name(), sandbox.dir(), sandbox.id(), () -> record));
+        start(new Target(sandbox.name(), sandbox.dir(), sandbox.id()));
     }
 
     /**
@@ -144,7 +137,7 @@ public final class Overlay {
         String levelId = CurrentWorld.levelId();
         if (levelId == null || !SandboxStore.isSandbox(levelId)) return;
         String parent = SandboxStore.parentOf(levelId);
-        start(new Target(parent, SandboxStore.savesDir().resolve(parent), null, TouchRecorder::live));
+        start(new Target(parent, SandboxStore.savesDir().resolve(parent), null));
     }
 
     public static boolean showing(Sandbox sandbox) {
@@ -175,11 +168,7 @@ public final class Overlay {
     public static Component hudLabel() {
         Target current = target;
         if (current == null) return Component.empty();
-        String mode;
-        if (!SandboxesConfig.overlaySandboxWorkOnly()) mode = "sandboxes.overlay.mode.all";
-        else if (current.record().get() == null) mode = "sandboxes.overlay.mode.untracked";
-        else mode = "sandboxes.overlay.mode.work";
-        return Component.translatable("sandboxes.overlay.hud", current.label(), Component.translatable(mode));
+        return Component.translatable("sandboxes.overlay.hud", current.label());
     }
 
     private static void start(Target next) {
@@ -253,7 +242,7 @@ public final class Overlay {
         int minY = lvl.getMinSectionY();
         for (int i = 0; i < lvl.getSectionsCount(); i++) {
             long sectionPos = SectionPos.asLong(pos.x(), minY + i, pos.z());
-            if (eligible(sectionPos)) PENDING.add(sectionPos);
+            PENDING.add(sectionPos);
         }
     }
 
@@ -265,18 +254,7 @@ public final class Overlay {
     public static void onBlockChanged(BlockPos pos) {
         if (target == null || level == null) return;
         long sectionPos = SectionPos.asLong(pos);
-        if (eligible(sectionPos)) PENDING.add(sectionPos);
-    }
-
-    private static boolean eligible(long sectionPos) {
-        Target current = target;
-        ClientLevel lvl = level;
-        if (current == null || lvl == null) return false;
-        if (!SandboxesConfig.overlaySandboxWorkOnly()) return true;
-        TouchedBlocks record = current.record().get();
-        // Untracked sandbox: no way to tell sandbox work from main-world change.
-        if (record == null) return true;
-        return record.containsSection(lvl.dimension().identifier().toString(), sectionPos);
+        PENDING.add(sectionPos);
     }
 
     /**
@@ -301,9 +279,6 @@ public final class Overlay {
 
         long deadline = System.nanoTime() + TICK_BUDGET_NANOS;
         int gen = generation;
-        // Null when every difference shows: untracked sandbox, or the switch is off.
-        TouchedBlocks filter = SandboxesConfig.overlaySandboxWorkOnly() ? target.record().get() : null;
-        String dimension = level.dimension().identifier().toString();
         while (!PENDING.isEmpty() && System.nanoTime() < deadline) {
             long sectionPos = PENDING.removeFirstLong();
             int sx = SectionPos.x(sectionPos), sy = SectionPos.y(sectionPos), sz = SectionPos.z(sectionPos);
@@ -313,15 +288,14 @@ public final class Overlay {
             if (index < 0 || index >= chunk.getSections().length) continue;
             LevelChunkSection section = chunk.getSections()[index];
             PalettedContainer<BlockState> live = section.getStates().copy();
-            exec.submit(() -> compare(gen, sectionPos, sx, sy, sz, live, filter, dimension));
+            exec.submit(() -> compare(gen, sectionPos, sx, sy, sz, live));
         }
     }
 
     // The comparison (worker thread)
 
     private static void compare(int gen, long sectionPos, int sx, int sy, int sz,
-                                PalettedContainer<BlockState> live,
-                                @Nullable TouchedBlocks filter, String dimension) {
+                                PalettedContainer<BlockState> live) {
         if (gen != generation || other == null) return;
         OtherWorld.Section there = other.section(sx, sy, sz);
         if (there == null) {
@@ -344,9 +318,6 @@ public final class Overlay {
             BlockState here = live.get(i & 15, i >> 8, (i >> 4) & 15);
             BlockState theirs = there.get(i);
             if (here.getBlock() == theirs.getBlock()) continue;
-            // Different, but not sandbox work: a main-world change since the fork.
-            if (filter != null && !filter.containsBlock(dimension,
-                    BlockPos.asLong(sx * 16 + (i & 15), sy * 16 + (i >> 8), sz * 16 + ((i >> 4) & 15)))) continue;
             Kind kind = here.isAir() ? Kind.ADDED : theirs.isAir() ? Kind.REMOVED : Kind.CHANGED;
             kindAt[i] = (byte) (kind.ordinal() + 1);
             count++;

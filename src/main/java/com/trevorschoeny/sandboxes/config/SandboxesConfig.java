@@ -31,10 +31,6 @@ public final class SandboxesConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static boolean quickButton = true;
-    // The diff overlay shows only blocks the sandbox's touched-blocks record
-    // lists, hiding main-world changes made after the fork. Off shows every
-    // difference. A switch so the two can be compared side by side.
-    private static boolean overlaySandboxWorkOnly = true;
 
     private static boolean loaded = false;
 
@@ -56,8 +52,6 @@ public final class SandboxesConfig {
             JsonObject root = JsonParser.parseString(Files.readString(path)).getAsJsonObject();
             quickButton = root.has("quickButton") && root.get("quickButton").isJsonPrimitive()
                     ? root.get("quickButton").getAsBoolean() : quickButton;
-            overlaySandboxWorkOnly = root.has("overlaySandboxWorkOnly") && root.get("overlaySandboxWorkOnly").isJsonPrimitive()
-                    ? root.get("overlaySandboxWorkOnly").getAsBoolean() : overlaySandboxWorkOnly;
             SandboxesClient.LOGGER.info("[config] loaded from {}", path);
         } catch (IOException | JsonSyntaxException | IllegalStateException e) {
             SandboxesClient.LOGGER.error("[config] failed to read {}, using defaults", path, e);
@@ -71,7 +65,6 @@ public final class SandboxesConfig {
             JsonObject root = new JsonObject();
             root.addProperty("version", CURRENT_VERSION);
             root.addProperty("quickButton", quickButton);
-            root.addProperty("overlaySandboxWorkOnly", overlaySandboxWorkOnly);
             Files.writeString(path, GSON.toJson(root));
         } catch (IOException e) {
             SandboxesClient.LOGGER.error("[config] failed to write {}, changes won't persist", path, e);
@@ -81,10 +74,4 @@ public final class SandboxesConfig {
     public static boolean quickButton() { return quickButton; }
     public static void setQuickButton(boolean v) { quickButton = v; save(); }
 
-    public static boolean overlaySandboxWorkOnly() { return overlaySandboxWorkOnly; }
-    public static void setOverlaySandboxWorkOnly(boolean v) {
-        overlaySandboxWorkOnly = v;
-        save();
-        com.trevorschoeny.sandboxes.overlay.Overlay.rescan();
-    }
 }
