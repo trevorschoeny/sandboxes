@@ -1,323 +1,444 @@
 package com.trevorschoeny.sandboxes.ui;
 
 import com.trevorschoeny.sandboxes.SandboxesClient;
+import com.trevorschoeny.sandboxes.config.SandboxesConfig;
 import com.trevorschoeny.sandboxes.overlay.Overlay;
 import com.trevorschoeny.sandboxes.overlay.OverlayKeys;
+import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
 import com.trevorschoeny.sandboxes.sandbox.Sandbox;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldFiles;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
+import com.trevorschoeny.keybindery.api.Chord;
 
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import com.trevlar.menukit.api.dialog.ConfirmDialog;
+import com.trevlar.menukit.api.element.Button;
+import com.trevlar.menukit.api.element.Flow;
+import com.trevlar.menukit.api.element.Icon;
+import com.trevlar.menukit.api.element.PanelElement;
+import com.trevlar.menukit.api.element.Tabs;
+import com.trevlar.menukit.api.element.TextField;
+import com.trevlar.menukit.api.element.TextLabel;
+import com.trevlar.menukit.api.element.TextRole;
+import com.trevlar.menukit.api.element.Toggle;
+import com.trevlar.menukit.api.element.WidgetHost;
+import com.trevlar.menukit.api.panel.MKScreen;
+import com.trevlar.menukit.api.panel.OutsideRegion;
+import com.trevlar.menukit.api.panel.Panel;
+import com.trevlar.menukit.api.panel.PanelPosition;
+import com.trevlar.menukit.api.panel.PanelStyle;
+import com.trevlar.menukit.api.panel.ScreenKind;
+
+import com.mojang.blaze3d.platform.NativeImage;
+
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.ConfirmScreen;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.FaviconTexture;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 import org.jspecify.annotations.Nullable;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The sandbox list for one world, with the actions underneath.
+ * The Sandboxes screen, built with MenuKit: one card per sandbox. Trev picked
+ * it over a vanilla-style world list on 2026-10-15.
  *
- * <p>Shaped after vanilla's world select on purpose: select a row, then use the
- * buttons. Anything that touches the disk runs on its own thread, because
- * copying a world takes long enough to freeze the frame on a filesystem that
- * can't clone.
+ * <p>Every row carries its own controls, because players switch between worlds
+ * from this menu far more often than they open a world from the game menu, so
+ * one click beats select-then-click. Two tabs: Sandboxes, and Settings. Opened
+ * with no world (from Mod Menu on the title screen) only Settings shows, since
+ * sandboxes exist inside their world.
+ *
+ * <p>This is also the screen that goes into Mod Hub as a tab later; for now it
+ * stands alone.
+ *
+ * ponytail: MenuKit freezes a panel's elements once built, so any change to the
+ * rows (a sandbox made, renamed, synced, deleted) rebuilds the screen, keeping
+ * the tab and scroll. MenuKit's coming list that changes while open replaces
+ * this.
  */
-public class SandboxesScreen extends Screen {
+public final class SandboxesScreen extends MKScreen {
 
-    private static final DateTimeFormatter JOINED_FORMAT =
-            DateTimeFormatter.ofPattern("MMM d, HH:mm");
+    private static final DateTimeFormatter JOINED_FORMAT = DateTimeFormatter.ofPattern("MMM d");
 
-    private static final int ROW_HEIGHT = 32;
-    private static final int LIST_TOP = 32;
-    private static final int FOOTER_HEIGHT = 88;
+    // Screen state, kept across rebuilds (and across opens, which is fine: one screen at a time).
+    private static String tab = "sandboxes";
+    private static final Map<String, Double> SCROLL = new HashMap<>();
+    /** The sandbox whose name is being edited, and the text so far. */
+    private static @Nullable String editingId = null;
+    private static String draftName = "";
+    /** Rows doing disk work right now: sandbox id to what it's doing. */
+    private static final Map<String, Component> BUSY = new ConcurrentHashMap<>();
+    /** A sandbox being copied into existence (create or duplicate), shown as a placeholder row. */
+    private static volatile @Nullable Component copying = null;
+    /** Sizes, filled in off-thread; a row shows "…" until its size is known. */
+    private static final Map<String, String> SIZES = new ConcurrentHashMap<>();
+    /** What the confirmation dialog is asking about, or null when it's closed. */
+    private static @Nullable Confirm confirm = null;
+    /** World images by sandbox id, loaded on first draw (client thread only). */
+    private static final Map<String, FaviconTexture> ICONS = new HashMap<>();
+
+    private record Confirm(Sandbox sandbox, boolean delete) {}
 
     private final Screen parent;
-    private final String worldId;
-
-    private SandboxList list;
-    private Button joinButton;
-    private Button overlayButton;
-    private Button duplicateButton;
-    /** Keybindery's key button for the selected sandbox; rebuilt when the selection changes. */
-    private @Nullable AbstractWidget keyButton = null;
-    private @Nullable String keyButtonFor = null;
-    private int keyX, keyY, keyWidth;
-    /** "Overlay key also used by ..." for the selected sandbox, or null. */
-    private @Nullable Component keyConflict = null;
-    private Button syncButton;
-    private Button renameButton;
-    private Button deleteButton;
-    private Button createButton;
-
-    /** Set while a copy or delete is running: the buttons stay off until it lands. */
-    private volatile boolean busy = false;
-    /** What to tell the player while busy, or null. */
-    private volatile @Nullable Component status = null;
+    private final @Nullable String worldId;
 
     /**
-     * A screen to open on the next tick rather than inside a button's press.
-     *
-     * <p>Vanilla fires a button on mouse-press, so a screen opened from inside
-     * that call is already up when the matching release arrives, and the release
-     * lands on whatever sits under the cursor on the new screen. That is what
-     * made v1's Settings button appear to do nothing. Opening a tick later means
-     * the release lands here, where it belongs.
+     * @param worldId the world whose sandboxes to list, or null when there's no
+     *                world (only the Settings tab shows)
      */
-    private @Nullable Screen pendingScreen = null;
+    public SandboxesScreen(Screen parent, @Nullable String worldId, String openTab) {
+        this(parent, worldId, openTab, worldId == null ? List.of() : SandboxStore.list(worldId));
+    }
 
-    public SandboxesScreen(Screen parent, String worldId) {
-        super(Component.translatable("sandboxes.screen.title", worldId));
+    private SandboxesScreen(Screen parent, @Nullable String worldId, String openTab, List<Sandbox> sandboxes) {
+        super(Component.translatable("sandboxes.compact.title"), ScreenKind.OPTIONS,
+                panels(parent, worldId, openTab, sandboxes));
         this.parent = parent;
         this.worldId = worldId;
+        setReturnAction(() -> Minecraft.getInstance().gui.setScreen(parent));
+        measureSizes(sandboxes);
     }
 
-    @Override
-    protected void init() {
-        list = new SandboxList(this, minecraft, width, height - LIST_TOP - FOOTER_HEIGHT,
-                LIST_TOP, ROW_HEIGHT);
-        addRenderableWidget(list);
-
-        // Three rows: what to do with the selected sandbox, two rows of three,
-        // then the screen's own buttons.
-        int centerX = width / 2;
-        int actionWidth = 98;
-        int gap = 4;
-        int left = centerX - (actionWidth * 3 + gap * 2) / 2;
-        int row1 = height - FOOTER_HEIGHT + 8;
-        int row2 = row1 + 24;
-        int row3 = row2 + 24;
-
-        // Row one: Join, Overlay, and the selected sandbox's overlay key.
-        joinButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.join"), b -> withSelected(this::join))
-                .bounds(left, row1, actionWidth, 20).build());
-        overlayButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.overlay_off"), b -> withSelected(this::toggleOverlay))
-                .bounds(left + actionWidth + gap, row1, actionWidth, 20).build());
-        keyX = left + (actionWidth + gap) * 2;
-        keyY = row1;
-        keyWidth = actionWidth;
-        keyButton = null;
-        keyButtonFor = null;
-
-        // Row two: the rest of what can be done to the selected sandbox.
-        int smallWidth = 72;
-        int left2 = centerX - (smallWidth * 4 + gap * 3) / 2;
-        duplicateButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.duplicate"), b -> withSelected(this::duplicate))
-                .bounds(left2, row2, smallWidth, 20).build());
-        renameButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.rename"), b -> withSelected(this::rename))
-                .bounds(left2 + smallWidth + gap, row2, smallWidth, 20).build());
-        syncButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.sync"), b -> withSelected(this::confirmSync))
-                .bounds(left2 + (smallWidth + gap) * 2, row2, smallWidth, 20).build());
-        deleteButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.delete"), b -> withSelected(this::confirmDelete))
-                .bounds(left2 + (smallWidth + gap) * 3, row2, smallWidth, 20).build());
-
-        createButton = addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.create"), b -> create())
-                .bounds(centerX - 160, row3, 120, 20).build());
-        addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.settings"),
-                        b -> pendingScreen = SandboxesScreens.settings(this))
-                .bounds(centerX - 36, row3, 64, 20).build());
-        // ponytail: comparison only; goes once Trev picks a screen.
-        addRenderableWidget(Button.builder(
-                        Component.translatable("sandboxes.button.compact"), b -> {
-                            SandboxesScreens.preferCompact(true);
-                            pendingScreen = SandboxesScreens.sandboxes(parent, worldId);
-                        })
-                .bounds(centerX + 32, row3, 80, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-                .bounds(centerX + 116, row3, 44, 20).build());
-
-        refresh();
-        updateButtons();
+    /** A world's sandbox list. */
+    public static Screen forWorld(Screen parent, String worldId) {
+        return new SandboxesScreen(parent, worldId, "sandboxes");
     }
 
-    // Loading the list
+    /** Sandboxes' settings, the Settings tab. Without a world (the title screen's Mod Menu) it's the only tab. */
+    public static Screen settings(Screen parent) {
+        return new SandboxesScreen(parent, CurrentWorld.hostWorldId(), "settings");
+    }
+
+    /** Rebuilds this screen in place, for after anything changed the rows. */
+    private static void rebuild() {
+        Minecraft mc = Minecraft.getInstance();
+        if (!(mc.gui.screen() instanceof SandboxesScreen current)) return;
+        mc.gui.setScreen(new SandboxesScreen(current.parent, current.worldId, tab));
+    }
+
+    // Panels
+
+    private static List<Panel> panels(Screen parent, @Nullable String worldId, String openTab, List<Sandbox> sandboxes) {
+        tab = worldId == null ? "settings" : openTab;
+
+        Tabs tabs = Tabs.builder()
+                .mode(Tabs.Mode.SIDE_SCROLL)
+                .state(() -> tab, id -> tab = id)
+                .bodyScroll(SCROLL::get, SCROLL::put)
+                .tab(Tabs.tab("sandboxes")
+                        .label(Component.translatable("sandboxes.compact.tab.sandboxes"))
+                        .visibleWhen(() -> worldId != null)
+                        .body(() -> sandboxesBody(worldId, sandboxes)))
+                .tab(Tabs.tab("settings")
+                        .label(Component.translatable("sandboxes.compact.tab.settings"))
+                        .body(SandboxesScreen::settingsBody))
+                .build();
+
+        Panel main = Panel.builder("sandboxes:screen")
+                .style(PanelStyle.NONE)
+                .position(PanelPosition.main())
+                .add(tabs)
+                .build();
+
+        PanelElement done = Button.builder().label(CommonComponents.GUI_DONE).size(150, 20)
+                .onClick(() -> Minecraft.getInstance().gui.setScreen(parent)).build();
+        Panel footer = Panel.builder("sandboxes:done")
+                .style(PanelStyle.NONE)
+                .position(PanelPosition.region(OutsideRegion.BOTTOM_CENTER))
+                .add(done)
+                .build();
+
+        Panel dialog = ConfirmDialog.builder()
+                .title(Component.translatable(confirm != null && confirm.delete()
+                        ? "sandboxes.confirm.delete.title" : "sandboxes.confirm.sync.title"))
+                .body(confirm == null ? Component.empty() : Component.translatable(confirm.delete()
+                        ? "sandboxes.confirm.delete.body" : "sandboxes.confirm.sync.body", confirm.sandbox().name()))
+                .onConfirm(SandboxesScreen::confirmed)
+                .onCancel(() -> {
+                    confirm = null;
+                    rebuild();
+                })
+                .build()
+                .visibleWhen(() -> confirm != null);
+
+        return List.of(main, footer, dialog);
+    }
+
+    // The Sandboxes tab
+
+    private static List<PanelElement> sandboxesBody(@Nullable String worldId, List<Sandbox> sandboxes) {
+        List<PanelElement> body = new ArrayList<>();
+        if (worldId == null) return body;
+        int y = 0;
+        if (sandboxes.isEmpty() && copying == null) {
+            body.add(TextLabel.builder().text(Component.translatable("sandboxes.screen.empty"))
+                    .role(TextRole.MUTED).at(0, y).build());
+            y += 20;
+        }
+        for (Sandbox sandbox : sandboxes) {
+            Component conflict = conflictLine(sandbox);
+            body.add(row(sandbox, y, conflict));
+            y += ROW_STEP + (conflict == null ? 0 : LINE_STEP);   // a conflict is one more line in the card
+        }
+        Component inProgress = copying;
+        if (inProgress != null) {
+            body.add(TextLabel.builder().text(inProgress).role(TextRole.MUTED).at(0, y + 10).build());
+            y += ROW_STEP;
+        }
+        body.add(Button.builder().label(Component.translatable("sandboxes.compact.new")).size(140, 20)
+                .disabledWhen(() -> copying != null)
+                .onClick(() -> createIn(worldId))
+                .at(0, y + 4).build());
+        return body;
+    }
+
+    /** A card (6 px padding around name, grey line and buttons), plus the gap to the next. */
+    private static final int ROW_STEP = 58;
+    /** One more line of text in a card: the font's 9 px and the stack's 2 px gap. */
+    private static final int LINE_STEP = 11;
+    /** The world image left of the title: vanilla's world list draws 32, this a little smaller. */
+    private static final int ICON_SIZE = 28;
+
+    private static final Identifier EYE_OPEN = Identifier.fromNamespaceAndPath("sandboxes", "eye_open");
+    private static final Identifier EYE_CLOSED = Identifier.fromNamespaceAndPath("sandboxes", "eye_closed");
 
     /**
-     * Rebuilds the rows. The listing and the per-sandbox size both read the
-     * disk, so they run off-thread and the rows are handed back to the client
-     * thread once they're ready.
+     * One sandbox: its world image, then a stack of the name, a grey line of
+     * when and how big, and every button for it.
      */
-    public void refresh() {
-        Thread.ofPlatform().name("sandboxes-list").start(() -> {
-            List<Sandbox> sandboxes = SandboxStore.list(worldId);
-            List<Component> details = new ArrayList<>(sandboxes.size());
-            for (Sandbox sandbox : sandboxes) {
-                details.add(detailFor(sandbox));
-            }
-            minecraft.execute(() -> {
-                // The player may have left this screen while the disk was read.
-                if (minecraft.gui.screen() != this || list == null) return;
-                List<SandboxList.Row> rows = new ArrayList<>(sandboxes.size());
-                for (int i = 0; i < sandboxes.size(); i++) {
-                    rows.add(list.new Row(sandboxes.get(i), details.get(i)));
+    private static PanelElement row(Sandbox sandbox, int y, @Nullable Component conflict) {
+        Flow.Builder text = Flow.builder().vertical().gap(2);
+        boolean editing = sandbox.id().equals(editingId);
+        if (editing) {
+            text.add(TextField.builder().size(140, 20).maxLength(64)
+                    .state(() -> draftName, name -> draftName = name)
+                    .onSubmit(name -> finishRename(sandbox))
+                    .build());
+        } else {
+            text.add(TextLabel.builder().text(Component.literal(sandbox.name())).build());
+        }
+        text.add(TextLabel.builder().text(detail(sandbox)).role(TextRole.MUTED).build());
+        if (conflict != null) text.add(TextLabel.builder().text(conflict).role(TextRole.MUTED).build());
+
+        Component busy = BUSY.get(sandbox.id());
+        // While it copies, the row says so and offers nothing that would collide.
+        text.add(busy != null
+                ? TextLabel.builder().text(busy).role(TextRole.MUTED).build()
+                : buttons(sandbox, editing));
+
+        return Flow.builder().boxed().at(0, y).gap(6)
+                .add(Icon.builder().texture(() -> worldIcon(sandbox), 64).size(ICON_SIZE, ICON_SIZE).build())
+                .add(text.build())
+                .build();
+    }
+
+    /** Everything you can do to a sandbox, one click each. */
+    private static PanelElement buttons(Sandbox sandbox, boolean editing) {
+        Flow.Builder row = Flow.builder().gap(2);
+        // Eye open while this sandbox's overlay shows; it appears once the screen closes.
+        row.add(Button.builder().size(20, 20)
+                .icon(() -> Overlay.showing(sandbox) ? EYE_OPEN : EYE_CLOSED)
+                .tooltip(Component.translatable("sandboxes.compact.overlay"))
+                .onClick(() -> Overlay.toggleFor(sandbox)).build());
+        if (OverlayKeys.available()) {
+            row.add(WidgetHost.builder()
+                    .widget(() -> {
+                        AbstractWidget key = OverlayKeys.button(0, 0, 50, 20, sandbox, chord -> setKey(sandbox, chord));
+                        if (key != null) key.setTooltip(Tooltip.create(
+                                Component.translatable("sandboxes.button.overlay_key.tooltip")));
+                        return key;
+                    })
+                    .size(50, 20)
+                    .build());
+        }
+        row.add(Button.builder().label(Component.translatable("sandboxes.button.join")).size(40, 20)
+                .onClick(() -> WorldSwitch.enterSandbox(sandbox)).build());
+        row.add(Button.builder().label(Component.translatable("sandboxes.button.sync")).size(40, 20)
+                .onClick(() -> {
+                    confirm = new Confirm(sandbox, false);
+                    rebuild();
+                }).build());
+        row.add(Button.builder().label(Component.literal(editing ? "✓" : "✎")).size(20, 20)
+                .tooltip(Component.translatable(editing ? "sandboxes.compact.rename.save" : "sandboxes.button.rename"))
+                .onClick(() -> {
+                    if (editing) {
+                        finishRename(sandbox);
+                    } else {
+                        editingId = sandbox.id();
+                        draftName = sandbox.name();
+                        rebuild();
+                    }
+                }).build());
+        row.add(Button.builder().label(Component.literal("❐")).size(20, 20)
+                .tooltip(Component.translatable("sandboxes.button.duplicate"))
+                .disabledWhen(() -> copying != null)
+                .onClick(() -> duplicate(sandbox)).build());
+        row.add(Button.builder().label(Component.literal("✕")).size(20, 20)
+                .tooltip(Component.translatable("sandboxes.button.delete"))
+                .onClick(() -> {
+                    confirm = new Confirm(sandbox, true);
+                    rebuild();
+                }).build());
+        return row.build();
+    }
+
+    /**
+     * The sandbox's own icon.png, loaded the way vanilla's world list does; a
+     * sandbox with none shows vanilla's unknown-world picture.
+     *
+     * ponytail: one 64x64 texture per sandbox, kept for the session (dropped on
+     * sync or delete, whose icon changes). Close them with the screen if a
+     * world ever has hundreds of sandboxes.
+     */
+    private static Identifier worldIcon(Sandbox sandbox) {
+        return ICONS.computeIfAbsent(sandbox.id(), id -> {
+            FaviconTexture texture = FaviconTexture.forWorld(Minecraft.getInstance().getTextureManager(), sandbox.levelId());
+            Path file = sandbox.dir().resolve("icon.png");
+            if (Files.isRegularFile(file)) {
+                try (InputStream in = Files.newInputStream(file)) {
+                    texture.upload(NativeImage.read(in));
+                } catch (Exception e) {   // unreadable, or not 64x64: show the unknown picture
+                    SandboxesClient.LOGGER.warn("[sandboxes] couldn't load the icon of {}", id, e);
                 }
-                list.setRows(rows);
-                keyButtonFor = null;
-                updateButtons();
-            });
-        });
+            }
+            return texture;
+        }).textureLocation();
     }
 
-    /** "joined Sep 11, 14:02 · 412 MB", or that it has never been joined. */
-    private Component detailFor(Sandbox sandbox) {
-        String size = humanSize(WorldFiles.sizeOf(sandbox.dir()));
-        if (sandbox.lastJoined() == 0L) {
-            return Component.translatable("sandboxes.row.never", size);
-        }
-        String when = LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(sandbox.lastJoined()), ZoneId.systemDefault())
+    private static void forgetIcon(String sandboxId) {
+        FaviconTexture texture = ICONS.remove(sandboxId);
+        if (texture != null) texture.close();
+    }
+
+    /** "Overlay key also used by: Jump", or null when the key is free (or there's no Keybindery). */
+    private static @Nullable Component conflictLine(Sandbox sandbox) {
+        // A key another binding also uses still works, but say so where it was set.
+        if (!OverlayKeys.available()) return null;
+        var conflicts = OverlayKeys.conflicts(sandbox);
+        return conflicts.isEmpty() ? null
+                : Component.translatable("sandboxes.screen.key_conflict", conflicts.get(0).label());
+    }
+
+    /** "Oct 14 · 412 MB", or "never joined · 412 MB". */
+    private static Component detail(Sandbox sandbox) {
+        String size = SIZES.getOrDefault(sandbox.id(), "…");
+        if (sandbox.lastJoined() == 0L) return Component.translatable("sandboxes.row.never", size);
+        String when = LocalDateTime.ofInstant(Instant.ofEpochMilli(sandbox.lastJoined()), ZoneId.systemDefault())
                 .format(JOINED_FORMAT);
-        return Component.translatable("sandboxes.row.joined", when, size);
+        return Component.translatable("sandboxes.compact.detail", when, size);
     }
 
-    private static String humanSize(long bytes) {
-        if (bytes >= 1024L * 1024L * 1024L) {
-            return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
-        }
-        return (bytes / (1024L * 1024L)) + " MB";
+    // The Settings tab
+
+    private static List<PanelElement> settingsBody() {
+        return List.of(Flow.builder().at(0, 0)
+                .add(TextLabel.builder().text(Component.translatable("sandboxes.settings.quick")).build())
+                .add(Flow.spacer())
+                .add(Toggle.builder().size(60, 20)
+                        .state(SandboxesConfig::quickButton, SandboxesConfig::setQuickButton).build())
+                .build(),
+                TextLabel.builder().text(Component.translatable("sandboxes.settings.quick.desc"))
+                        .role(TextRole.MUTED).at(0, 24).build());
     }
 
     // Actions
 
-    private void withSelected(java.util.function.Consumer<Sandbox> action) {
-        Sandbox selected = list == null ? null : list.selected();
-        if (selected != null && !busy) action.accept(selected);
-    }
-
-    /** Joins a sandbox. WorldSwitch owns the arrival: stamp the join, save, open. */
-    public void join(Sandbox sandbox) {
-        if (busy) return;
-        WorldSwitch.enterSandbox(sandbox);
-    }
-
-    private void create() {
-        if (busy) return;
-        runOnDisk(Component.translatable("sandboxes.status.creating"), () -> {
-            // Flush the world first: a copy only sees what's on disk.
-            WorldSwitch.saveCurrentWorld();
-            SandboxStore.create(worldId);
-        });
-    }
-
-    private void confirmSync(Sandbox sandbox) {
-        // Sync throws away everything built in the sandbox, so it asks first.
-        minecraft.gui.setScreen(new ConfirmScreen(
-                confirmed -> {
-                    minecraft.gui.setScreen(this);
-                    if (confirmed) {
-                        Overlay.forget(sandbox);
-                        runOnDisk(Component.translatable("sandboxes.status.syncing"), () -> {
-                            WorldSwitch.saveCurrentWorld();
-                            SandboxStore.sync(sandbox);
-                        });
-                    }
-                },
-                Component.translatable("sandboxes.confirm.sync.title"),
-                Component.translatable("sandboxes.confirm.sync.body", sandbox.name())));
-    }
-
-    private void confirmDelete(Sandbox sandbox) {
-        minecraft.gui.setScreen(new ConfirmScreen(
-                confirmed -> {
-                    minecraft.gui.setScreen(this);
-                    if (confirmed) {
-                        Overlay.forget(sandbox);
-                        runOnDisk(Component.translatable("sandboxes.status.deleting"),
-                                () -> SandboxStore.delete(sandbox));
-                    }
-                },
-                Component.translatable("sandboxes.confirm.delete.title"),
-                Component.translatable("sandboxes.confirm.delete.body", sandbox.name())));
-    }
-
-    private void rename(Sandbox sandbox) {
-        pendingScreen = new RenameScreen(this, sandbox);
-    }
-
-    /** One overlay at a time: turning this one on replaces whichever was showing. */
-    private void toggleOverlay(Sandbox sandbox) {
-        Overlay.toggleFor(sandbox);
-        updateButtons();
-    }
-
-    /**
-     * Puts Keybindery's key button in its slot for whichever sandbox is selected.
-     * The button shows one chord, so a new selection gets a new button.
-     */
-    private void updateKeyButton() {
-        Sandbox selected = list == null ? null : list.selected();
-        String forId = selected == null ? null : selected.id();
-        if (java.util.Objects.equals(forId, keyButtonFor) && (keyButton != null || forId == null)) return;
-        if (keyButton != null) removeWidget(keyButton);
-        keyButton = null;
-        keyButtonFor = forId;
-        keyConflict = null;
-        if (selected == null) return;
-
-        keyButton = OverlayKeys.button(keyX, keyY, keyWidth, 20, selected, chord -> setKey(selected, chord));
-        if (keyButton != null) {
-            keyButton.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
-                    Component.translatable("sandboxes.button.overlay_key.tooltip")));
-            addRenderableWidget(keyButton);
-            keyConflict = conflictLine(selected);
+    private static void finishRename(Sandbox sandbox) {
+        String name = draftName.trim();
+        editingId = null;
+        // An empty name would leave a row with nothing to read; keep the old one.
+        if (!name.isEmpty() && !name.equals(sandbox.name())) {
+            try {
+                SandboxStore.rename(sandbox, name);
+                OverlayKeys.refresh();   // the key's label names the sandbox
+            } catch (IOException e) {
+                SandboxesClient.LOGGER.error("[sandboxes] couldn't rename {}", sandbox.id(), e);
+            }
         }
+        rebuild();
     }
 
-    private void setKey(Sandbox sandbox, com.trevorschoeny.keybindery.api.Chord chord) {
+    private static void setKey(Sandbox sandbox, Chord chord) {
         try {
             SandboxStore.setOverlayKey(sandbox, chord.serialize());
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             SandboxesClient.LOGGER.error("[sandboxes] couldn't save the overlay key for {}", sandbox.id(), e);
             return;
         }
         OverlayKeys.refresh();
-        // The rows hold the old key; reload them, keeping the button for this sandbox.
-        keyButtonFor = null;
-        refresh();
+        rebuild();
     }
 
-    private static @Nullable Component conflictLine(Sandbox sandbox) {
-        var conflicts = OverlayKeys.conflicts(sandbox);
-        if (conflicts.isEmpty()) return null;
-        return Component.translatable("sandboxes.screen.key_conflict", conflicts.get(0).label());
+    private static void confirmed() {
+        Confirm pending = confirm;
+        confirm = null;
+        if (pending == null) return;
+        Sandbox sandbox = pending.sandbox();
+        Overlay.forget(sandbox);
+        if (pending.delete()) {
+            onDisk(sandbox.id(), Component.translatable("sandboxes.status.deleting"), () -> SandboxStore.delete(sandbox));
+        } else {
+            onDisk(sandbox.id(), Component.translatable("sandboxes.status.syncing"), () -> {
+                WorldSwitch.saveCurrentWorld();
+                SandboxStore.sync(sandbox);
+            });
+        }
     }
 
-    private void duplicate(Sandbox sandbox) {
-        runOnDisk(Component.translatable("sandboxes.status.duplicating"), () -> SandboxStore.duplicate(sandbox));
+    private static void createIn(String worldId) {
+        onDisk(null, Component.translatable("sandboxes.status.creating"), () -> {
+            WorldSwitch.saveCurrentWorld();   // a copy only sees what's on disk
+            SandboxStore.create(worldId);
+        });
     }
 
-    /** Anything that writes to the disk: off-thread, with the buttons off and a message up. */
-    private void runOnDisk(Component message, DiskWork work) {
-        busy = true;
-        status = message;
-        updateButtons();
+    private static void duplicate(Sandbox sandbox) {
+        onDisk(null, Component.translatable("sandboxes.status.duplicating"), () -> SandboxStore.duplicate(sandbox));
+    }
+
+    /**
+     * Disk work off the client thread. With a sandbox id, that row shows the
+     * message in place of its buttons; without one, a placeholder row stands
+     * where the new sandbox will appear. The rest of the list stays usable.
+     */
+    private static void onDisk(@Nullable String sandboxId, Component message, DiskWork work) {
+        if (sandboxId != null) BUSY.put(sandboxId, message);
+        else copying = message;
+        rebuild();
         Thread.ofPlatform().name("sandboxes-io").start(() -> {
             try {
                 work.run();
             } catch (Exception e) {
                 SandboxesClient.LOGGER.error("[sandboxes] {} failed", message.getString(), e);
             } finally {
-                busy = false;
-                status = null;
-                minecraft.execute(() -> {
-                    if (minecraft.gui.screen() == this) refresh();
+                if (sandboxId != null) {
+                    BUSY.remove(sandboxId);
+                    SIZES.remove(sandboxId);
+                } else {
+                    copying = null;
+                }
+                Minecraft.getInstance().execute(() -> {
+                    if (sandboxId != null) forgetIcon(sandboxId);
+                    OverlayKeys.refresh();
+                    rebuild();
                 });
             }
         });
@@ -327,60 +448,18 @@ public class SandboxesScreen extends Screen {
         void run() throws Exception;
     }
 
-    // Screen plumbing
-
-    private void updateButtons() {
-        boolean hasSelection = list != null && list.selected() != null;
-        boolean enabled = hasSelection && !busy;
-        if (joinButton != null) joinButton.active = enabled;
-        if (duplicateButton != null) duplicateButton.active = enabled;
-        if (overlayButton != null) {
-            overlayButton.active = enabled;
-            Sandbox selected = hasSelection ? list.selected() : null;
-            boolean on = selected != null && Overlay.showing(selected);
-            overlayButton.setMessage(Component.translatable(
-                    on ? "sandboxes.button.overlay_on" : "sandboxes.button.overlay_off"));
-        }
-        if (syncButton != null) syncButton.active = enabled;
-        if (renameButton != null) renameButton.active = enabled;
-        if (deleteButton != null) deleteButton.active = enabled;
-        if (createButton != null) createButton.active = !busy;
+    /** Fills in sizes the rows don't know yet; a world folder can take a moment to walk. */
+    private static void measureSizes(List<Sandbox> sandboxes) {
+        List<Sandbox> unknown = sandboxes.stream().filter(s -> !SIZES.containsKey(s.id())).toList();
+        if (unknown.isEmpty()) return;
+        Thread.ofPlatform().name("sandboxes-sizes").start(() -> {
+            for (Sandbox sandbox : unknown) SIZES.put(sandbox.id(), humanSize(WorldFiles.sizeOf(sandbox.dir())));
+            Minecraft.getInstance().execute(SandboxesScreen::rebuild);
+        });
     }
 
-    @Override
-    public void tick() {
-        super.tick();
-        updateButtons();
-        updateKeyButton();
-        if (pendingScreen != null) {
-            Screen next = pendingScreen;
-            pendingScreen = null;
-            minecraft.gui.setScreen(next);
-        }
-    }
-
-    @Override
-    public void onClose() {
-        minecraft.gui.setScreen(parent);
-    }
-
-    @Override
-    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
-                                   float partialTick) {
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.text(font, title, (width - font.width(title)) / 2, 12, 0xFFFFFFFF, true);
-
-        Component message = status;
-        if (message != null) {
-            graphics.text(font, message, (width - font.width(message)) / 2,
-                    height - FOOTER_HEIGHT - 14, 0xFFFFFF55, true);
-        } else if (keyConflict != null) {
-            graphics.text(font, keyConflict, (width - font.width(keyConflict)) / 2,
-                    height - FOOTER_HEIGHT - 14, 0xFFFFFF55, true);
-        } else if (list != null && list.children().isEmpty()) {
-            Component empty = Component.translatable("sandboxes.screen.empty");
-            graphics.text(font, empty, (width - font.width(empty)) / 2, height / 2 - 8,
-                    0xFFA0A0A0, true);
-        }
+    private static String humanSize(long bytes) {
+        if (bytes >= 1024L * 1024L * 1024L) return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+        return (bytes / (1024L * 1024L)) + " MB";
     }
 }

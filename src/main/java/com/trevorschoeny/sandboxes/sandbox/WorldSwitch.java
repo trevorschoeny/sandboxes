@@ -8,6 +8,8 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -62,15 +64,28 @@ public final class WorldSwitch {
      * making a whole world copy from a stray keypress would be too much.
      */
     public static void hop() {
+        Hop target = hopTarget();
+        if (target != null) target.go().run();
+    }
+
+    /** Where {@link #hop()} would go: a name to show, and the way there. */
+    public record Hop(Component label, Runnable go) {}
+
+    /**
+     * Where {@link #hop()} goes right now, or null when it would do nothing.
+     * The quick button's tooltip reads this, so what it says is where it goes.
+     */
+    public static @Nullable Hop hopTarget() {
         String levelId = CurrentWorld.levelId();
-        if (levelId == null) return;
+        if (levelId == null) return null;
         if (SandboxStore.isSandbox(levelId)) {
-            openLevel(SandboxStore.parentOf(levelId));
-            return;
+            String parent = SandboxStore.parentOf(levelId);
+            return new Hop(Component.translatable("sandboxes.quick.back", parent), () -> openLevel(parent));
         }
         List<Sandbox> sandboxes = SandboxStore.list(levelId);
-        if (sandboxes.isEmpty()) return;
-        enterSandbox(sandboxes.get(0));    // list() is most recently joined first
+        if (sandboxes.isEmpty()) return null;
+        Sandbox latest = sandboxes.get(0);    // list() is most recently joined first
+        return new Hop(Component.translatable("sandboxes.quick.to", latest.name()), () -> enterSandbox(latest));
     }
 
     /**

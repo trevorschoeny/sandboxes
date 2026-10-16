@@ -2,7 +2,6 @@ package com.trevorschoeny.sandboxes.ui;
 
 import com.trevorschoeny.sandboxes.config.SandboxesConfig;
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
-import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 
 import com.trevlar.menukit.api.element.Button;
@@ -16,11 +15,13 @@ import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
+import org.jspecify.annotations.Nullable;
+
 
 /**
  * The quick-sandbox button: one small button in the pause menu's top-right
  * corner. In a world it jumps to the sandbox used last; in a sandbox it goes
- * back. It stays hidden when the world has no sandbox to jump to.
+ * back. It stays hidden when the world has no sandbox to jump to. Its tooltip names where it goes.
  *
  * <p>This is the one piece built with MenuKit, which supports a panel on
  * {@code PauseScreen} and whose {@code visibleWhen} hides rendering and clicks
@@ -38,7 +39,7 @@ public final class QuickButton {
     private static final int SIZE = 20;
 
     /**
-     * Cache for "does this world have a sandbox", with the world it was read for.
+     * Cache for where the button goes, with the world it was read for.
      *
      * <p>Visibility is asked every frame and the honest answer is a directory
      * listing, so the answer is held briefly. A sandbox created or deleted
@@ -47,7 +48,7 @@ public final class QuickButton {
      */
     private static final long CACHE_MILLIS = 1000L;
     private static String cachedWorldId = null;
-    private static boolean cachedHasSandboxes = false;
+    private static WorldSwitch.@Nullable Hop cachedTarget = null;
     private static long cachedAt = 0L;
 
     /** Builds the panel and registers it. Call once at client init. */
@@ -59,7 +60,11 @@ public final class QuickButton {
                         .icon(() -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE)
                         .size(SIZE, SIZE)
                         .onClick(WorldSwitch::hop)
-                        .tooltip(Component.translatable("sandboxes.quick.tooltip"))
+                        // Says where it goes: "Jump to <sandbox>" or "Back to <world>".
+                        .tooltip(() -> {
+                            WorldSwitch.Hop target = target();
+                            return target == null ? Component.empty() : target.label();
+                        })
                         .build())
                 .build()
                 .visibleWhen(QuickButton::shouldShow);
@@ -69,21 +74,18 @@ public final class QuickButton {
     }
 
     private static boolean shouldShow() {
-        if (!SandboxesConfig.quickButton()) return false;
-        String levelId = CurrentWorld.levelId();
-        if (levelId == null) return false;
-        // Inside a sandbox the button always has somewhere to go: back.
-        if (SandboxStore.isSandbox(levelId)) return true;
-        return hasSandboxes(levelId);
+        return SandboxesConfig.quickButton() && target() != null;
     }
 
-    private static boolean hasSandboxes(String worldId) {
+    private static WorldSwitch.@Nullable Hop target() {
+        String levelId = CurrentWorld.levelId();
+        if (levelId == null) return null;
         long now = System.currentTimeMillis();
-        if (!worldId.equals(cachedWorldId) || now - cachedAt > CACHE_MILLIS) {
-            cachedWorldId = worldId;
-            cachedHasSandboxes = !SandboxStore.list(worldId).isEmpty();
+        if (!levelId.equals(cachedWorldId) || now - cachedAt > CACHE_MILLIS) {
+            cachedWorldId = levelId;
+            cachedTarget = WorldSwitch.hopTarget();
             cachedAt = now;
         }
-        return cachedHasSandboxes;
+        return cachedTarget;
     }
 }
