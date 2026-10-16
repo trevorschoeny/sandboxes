@@ -31,6 +31,8 @@ public final class SandboxesConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static boolean quickButton = true;
+    /** The same button above the inventory too. Off by default: that edge is where inventory mods put their own buttons. */
+    private static boolean quickButtonInventory = false;
 
     private static boolean loaded = false;
 
@@ -52,6 +54,8 @@ public final class SandboxesConfig {
             JsonObject root = JsonParser.parseString(Files.readString(path)).getAsJsonObject();
             quickButton = root.has("quickButton") && root.get("quickButton").isJsonPrimitive()
                     ? root.get("quickButton").getAsBoolean() : quickButton;
+            quickButtonInventory = root.has("quickButtonInventory") && root.get("quickButtonInventory").isJsonPrimitive()
+                    ? root.get("quickButtonInventory").getAsBoolean() : quickButtonInventory;
             SandboxesClient.LOGGER.info("[config] loaded from {}", path);
         } catch (IOException | JsonSyntaxException | IllegalStateException e) {
             SandboxesClient.LOGGER.error("[config] failed to read {}, using defaults", path, e);
@@ -65,6 +69,7 @@ public final class SandboxesConfig {
             JsonObject root = new JsonObject();
             root.addProperty("version", CURRENT_VERSION);
             root.addProperty("quickButton", quickButton);
+            root.addProperty("quickButtonInventory", quickButtonInventory);
             Files.writeString(path, GSON.toJson(root));
         } catch (IOException e) {
             SandboxesClient.LOGGER.error("[config] failed to write {}, changes won't persist", path, e);
@@ -73,5 +78,7 @@ public final class SandboxesConfig {
 
     public static boolean quickButton() { return quickButton; }
     public static void setQuickButton(boolean v) { quickButton = v; save(); }
+    public static boolean quickButtonInventory() { return quickButtonInventory; }
+    public static void setQuickButtonInventory(boolean v) { quickButtonInventory = v; save(); }
 
 }

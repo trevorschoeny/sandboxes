@@ -55,6 +55,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /**
  * The Sandboxes screen, built with MenuKit: one card per sandbox. Trev picked
@@ -349,14 +351,22 @@ public final class SandboxesScreen extends MKScreen {
     // The Settings tab
 
     private static List<PanelElement> settingsBody() {
-        return List.of(Flow.builder().at(0, 0)
-                .add(TextLabel.builder().text(Component.translatable("sandboxes.settings.quick")).build())
-                .add(Flow.spacer())
-                .add(Toggle.builder().size(60, 20)
-                        .state(SandboxesConfig::quickButton, SandboxesConfig::setQuickButton).build())
-                .build(),
-                TextLabel.builder().text(Component.translatable("sandboxes.settings.quick.desc"))
-                        .role(TextRole.MUTED).at(0, 24).build());
+        List<PanelElement> body = new ArrayList<>();
+        body.addAll(setting("sandboxes.settings.quick", SandboxesConfig::quickButton, SandboxesConfig::setQuickButton, 0));
+        body.addAll(setting("sandboxes.settings.quick_inventory",
+                SandboxesConfig::quickButtonInventory, SandboxesConfig::setQuickButtonInventory, 48));
+        return body;
+    }
+
+    /** A switch with its name on the left, the toggle on the right, and a grey line under it saying what it does. */
+    private static List<PanelElement> setting(String key, BooleanSupplier get, Consumer<Boolean> set, int y) {
+        return List.of(Flow.builder().at(0, y)
+                        .add(TextLabel.builder().text(Component.translatable(key)).build())
+                        .add(Flow.spacer())
+                        .add(Toggle.builder().size(60, 20).state(get::getAsBoolean, set).build())
+                        .build(),
+                TextLabel.builder().text(Component.translatable(key + ".desc"))
+                        .role(TextRole.MUTED).at(0, y + 24).build());
     }
 
     // Actions

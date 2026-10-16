@@ -6,21 +6,27 @@ import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 
 import com.trevlar.menukit.api.element.Button;
 import com.trevlar.menukit.api.panel.InsideRegion;
+import com.trevlar.menukit.api.panel.OutsideRegion;
 import com.trevlar.menukit.api.panel.Panel;
 import com.trevlar.menukit.api.panel.PanelPosition;
 import com.trevlar.menukit.api.panel.PanelStyle;
+import com.trevlar.menukit.api.panel.ScreenPanelAdapter;
 import com.trevlar.menukit.api.panel.VanillaScreenPanelAdapter;
 
 import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 import org.jspecify.annotations.Nullable;
 
+import java.util.function.BooleanSupplier;
+
 
 /**
  * The quick-sandbox button: one small button in the pause menu's top-right
- * corner. In a world it jumps to the sandbox used last; in a sandbox it goes
+ * corner, and optionally above the inventory too. In a world it jumps to the sandbox used last; in a sandbox it goes
  * back. It stays hidden when the world has no sandbox to jump to. Its tooltip names where it goes.
  *
  * <p>This is the one piece built with MenuKit, which supports a panel on
@@ -51,11 +57,25 @@ public final class QuickButton {
     private static WorldSwitch.@Nullable Hop cachedTarget = null;
     private static long cachedAt = 0L;
 
-    /** Builds the panel and registers it. Call once at client init. */
+    /** Builds the panels and registers them. Call once at client init. */
     public static void install() {
-        Panel panel = Panel.builder("sandboxes.quick")
+        // The pause menu's top-right corner.
+        new VanillaScreenPanelAdapter(panel("sandboxes.quick",
+                PanelPosition.screenAnchor(InsideRegion.TOP_RIGHT), SandboxesConfig::quickButton), 0)
+                .on(PauseScreen.class);
+        // Above the inventory's top-right corner, survival and creative alike; the
+        // region follows the frame (creative's tab rows, an open recipe book) and
+        // shares the edge with other mods' buttons without overlapping.
+        new ScreenPanelAdapter(panel("sandboxes.quick.inventory",
+                PanelPosition.region(OutsideRegion.TOP_ALIGN_RIGHT), SandboxesConfig::quickButtonInventory))
+                .on(InventoryScreen.class, CreativeModeInventoryScreen.class);
+    }
+
+    /** One quick button, shown while its setting is on and there's somewhere to jump. */
+    private static Panel panel(String id, PanelPosition position, BooleanSupplier enabled) {
+        return Panel.builder(id)
                 .style(PanelStyle.NONE)
-                .position(PanelPosition.screenAnchor(InsideRegion.TOP_RIGHT))
+                .position(position)
                 .add(Button.builder()
                         .icon(() -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE)
                         .size(SIZE, SIZE)
@@ -67,14 +87,7 @@ public final class QuickButton {
                         })
                         .build())
                 .build()
-                .visibleWhen(QuickButton::shouldShow);
-
-        new VanillaScreenPanelAdapter(panel, 0)
-                .on(PauseScreen.class);
-    }
-
-    private static boolean shouldShow() {
-        return SandboxesConfig.quickButton() && target() != null;
+                .visibleWhen(() -> enabled.getAsBoolean() && target() != null);
     }
 
     private static WorldSwitch.@Nullable Hop target() {
