@@ -47,12 +47,9 @@ dependencies {
     // the list hides the key button.
     implementation project(':keybindery-api')
     include        project(':keybindery-api')
-    // The real Keybindery in the dev client, so the keys can be tried. Off for
-    // now: Keybindery 1.3.1 in the workspace needs MenuKit 7.2.0, which isn't
-    // pinned yet, so loading it stops the client at launch. Restore these two
-    // lines when menukit_version reaches 7.2.0.
-    // localRuntime project(':keybindery')
-    // localRuntime rootProject.project(':keybindery').sourceSets.client.output
+    // The real Keybindery in the dev client, so the keys can be tried.
+    localRuntime project(':keybindery')
+    localRuntime rootProject.project(':keybindery').sourceSets.client.output
 
     // ModMenu: surfaces the config screen from the mods list. Soft dep.
     compileOnly "com.terraformersmc:modmenu:21.0.0"
