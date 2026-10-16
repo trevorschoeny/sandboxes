@@ -15,6 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -326,6 +327,9 @@ public final class Overlay {
 
         byte[] kindAt = new byte[4096];   // 0 = same, otherwise Kind ordinal + 1
         BlockState[] theirsAt = new BlockState[4096];
+        // What the renderer draws at each difference: the other world's block for a
+        // ghost, the block here for a tint. Decides which faces a neighbour hides.
+        BlockState[] shownAt = new BlockState[4096];
         int count = 0;
         for (int i = 0; i < 4096; i++) {
             BlockState here = live.get(i & 15, i >> 8, (i >> 4) & 15);
@@ -334,6 +338,7 @@ public final class Overlay {
             Kind kind = here.isAir() ? Kind.ADDED : theirs.isAir() ? Kind.REMOVED : Kind.CHANGED;
             kindAt[i] = (byte) (kind.ordinal() + 1);
             theirsAt[i] = theirs;
+            shownAt[i] = kind == Kind.ADDED ? theirs : here;
             count++;
         }
         if (gen != generation) return;
@@ -351,7 +356,7 @@ public final class Overlay {
             if (kindAt[i] == 0) continue;
             indices[n] = (short) i;
             kinds[n] = (byte) (kindAt[i] - 1);
-            faces[n] = exposedFaces(kindAt, i);
+            faces[n] = exposedFaces(kindAt, shownAt, i);
             theirs[n] = theirsAt[i];
             n++;
         }
@@ -359,21 +364,32 @@ public final class Overlay {
     }
 
     /**
-     * Which of a block's six faces to draw: a face against a neighbour of the same
-     * colour is hidden, so a solid build draws as one see-through shell rather
-     * than every inner face. Faces on the section's edge are always drawn.
+     * Which of a block's six faces to draw. A face is hidden behind a neighbour of
+     * the same colour that would cover it: a full solid block, or, where both are
+     * drawn as boxes (water, lava), the box beside it. So a solid build draws as
+     * one see-through shell, and a plank behind a torch keeps its face. Faces on
+     * the section's edge are always drawn.
      * Bits: 0 down, 1 up, 2 north, 3 south, 4 west, 5 east.
      */
-    private static byte exposedFaces(byte[] kindAt, int i) {
+    private static byte exposedFaces(byte[] kindAt, BlockState[] shownAt, int i) {
         int x = i & 15, z = (i >> 4) & 15, y = i >> 8;
-        byte kind = kindAt[i];
         int mask = 0;
-        if (y == 0 || kindAt[i - 256] != kind) mask |= 1;
-        if (y == 15 || kindAt[i + 256] != kind) mask |= 1 << 1;
-        if (z == 0 || kindAt[i - 16] != kind) mask |= 1 << 2;
-        if (z == 15 || kindAt[i + 16] != kind) mask |= 1 << 3;
-        if (x == 0 || kindAt[i - 1] != kind) mask |= 1 << 4;
-        if (x == 15 || kindAt[i + 1] != kind) mask |= 1 << 5;
+        if (y == 0 || !covers(kindAt, shownAt, i, i - 256)) mask |= 1;
+        if (y == 15 || !covers(kindAt, shownAt, i, i + 256)) mask |= 1 << 1;
+        if (z == 0 || !covers(kindAt, shownAt, i, i - 16)) mask |= 1 << 2;
+        if (z == 15 || !covers(kindAt, shownAt, i, i + 16)) mask |= 1 << 3;
+        if (x == 0 || !covers(kindAt, shownAt, i, i - 1)) mask |= 1 << 4;
+        if (x == 15 || !covers(kindAt, shownAt, i, i + 1)) mask |= 1 << 5;
         return (byte) mask;
+    }
+
+    /** Whether the difference at {@code j} hides the face of the one at {@code i} that touches it. */
+    private static boolean covers(byte[] kindAt, BlockState[] shownAt, int i, int j) {
+        if (kindAt[j] != kindAt[i]) return false;
+        BlockState mine = shownAt[i], theirs = shownAt[j];
+        if (theirs.isSolidRender()) return true;
+        // ponytail: "drawn as a box" guessed from the render shape; a model-less
+        // block-entity block (a chest) still draws its inner box faces.
+        return mine.getRenderShape() == RenderShape.INVISIBLE && theirs.getRenderShape() == RenderShape.INVISIBLE;
     }
 }
