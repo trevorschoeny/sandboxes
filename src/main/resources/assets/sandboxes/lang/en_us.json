@@ -35,5 +35,8 @@
   "sandboxes.settings.quick": "Quick sandbox button",
   "sandboxes.settings.quick.desc": "A small button in the pause menu's top-right corner. In your world it jumps to the sandbox you used last; inside a sandbox it takes you back.",
   "sandboxes.settings.quick_inventory": "Quick sandbox button in inventory",
-  "sandboxes.settings.quick_inventory.desc": "The same button in the top-right corner of the screen while your inventory is open, in survival and creative."
+  "sandboxes.settings.quick_inventory.desc": "The same button in the top-right corner of the screen while your inventory is open, in survival and creative.",
+  "sandboxes.overlay.change": "%s → %s",
+  "sandboxes.settings.opacity": "Overlay opacity",
+  "sandboxes.settings.opacity.desc": "How solid the overlay's ghost blocks and tints are. Lower sees more of the world through them."
 }

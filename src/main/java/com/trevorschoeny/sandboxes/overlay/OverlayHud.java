@@ -6,8 +6,8 @@ import com.trevlar.menukit.api.panel.InsideRegion;
 import com.trevlar.menukit.api.panel.PanelStyle;
 
 /**
- * One line at the top of the screen while the overlay is on: which world it
- * compares with, and whether it shows sandbox work only or every difference.
+ * The overlay's lines at the top of the screen: which world it compares with,
+ * and, under it, what differs at the block you're looking at.
  */
 public final class OverlayHud {
 
@@ -20,6 +20,14 @@ public final class OverlayHud {
                 .style(PanelStyle.NONE)
                 .visibleWhen(Overlay::active)
                 .element(TextLabel.builder().text(Overlay::hudLabel).color(0xFFE0E0E0).shadow(true).build())
+                .build();
+        // Under it, the difference under the crosshair: "Stone → Oak Planks".
+        HudPanel.builder("sandboxes:overlay-look")
+                .region(InsideRegion.TOP_CENTER)
+                .autoSize().padding(0)
+                .style(PanelStyle.NONE)
+                .visibleWhen(OverlayLook::showing)
+                .element(TextLabel.builder().text(OverlayLook::label).color(0xFFFFFFFF).shadow(true).build())
                 .build();
     }
 }

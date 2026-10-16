@@ -24,6 +24,7 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -45,9 +46,10 @@ import java.util.concurrent.Executors;
  * </ol>
  * Off, it does nothing at all.
  *
- * <p>Colours describe the other world from where you stand: green, the other
- * world has a block where you have air; red, you have a block where it has air;
- * yellow, a different block.
+ * <p>Colours describe the other world from where you stand (see
+ * {@link OverlayRenderer} for how each is drawn): green, the other world has a
+ * block where you have air; red, you have a block where it has air; yellow, a
+ * different block.
  *
  * <p>Every difference shows, whoever made it. Telling sandbox work apart from
  * main-world changes since the fork was tried and dropped: once the player
@@ -64,22 +66,37 @@ public final class Overlay {
 
     private Overlay() {}
 
-    /** What the other world has at a position, seen from the world you're in. */
+    /** What the other world has at a position, seen from the world you're in. RGB; the alpha is the opacity setting. */
     enum Kind {
-        ADDED(0x6040E040),     // other world: block, here: air
-        REMOVED(0x60FF4040),   // other world: air, here: block
-        CHANGED(0x60FFD040);   // both: a block, but different ones
+        ADDED(0x60FF60),     // other world: block, here: air
+        REMOVED(0xFF5050),   // other world: air, here: block
+        CHANGED(0xFFE040);   // both: a block, but different ones
 
-        final int color;
+        final int rgb;
 
-        Kind(int color) {
-            this.color = color;
+        Kind(int rgb) {
+            this.rgb = rgb;
         }
     }
 
-    /** One section's differences, in local block indices (y * 256 + z * 16 + x). */
+    /**
+     * One section's differences, in local block indices (y * 256 + z * 16 + x),
+     * ascending, with what the other world has at each.
+     */
     record SectionDiff(int sectionX, int sectionY, int sectionZ,
-                       short[] indices, byte[] kinds, byte[] exposedFaces) {}
+                       short[] indices, byte[] kinds, byte[] exposedFaces, BlockState[] theirs) {}
+
+    /** One difference: its kind, and the other world's block there. */
+    record Difference(Kind kind, BlockState theirs) {}
+
+    /** The difference at a position, or null where the worlds agree (or it isn't compared yet). */
+    static @Nullable Difference at(BlockPos pos) {
+        SectionDiff diff = DIFFS.get(SectionPos.asLong(pos));
+        if (diff == null) return null;
+        int local = ((pos.getY() & 15) << 8) | ((pos.getZ() & 15) << 4) | (pos.getX() & 15);
+        int n = Arrays.binarySearch(diff.indices(), (short) local);
+        return n < 0 ? null : new Difference(Kind.values()[diff.kinds()[n]], diff.theirs()[n]);
+    }
 
     /**
      * What the overlay compares against.
@@ -157,11 +174,6 @@ public final class Overlay {
     public static void off() {
         target = null;
         reset(null);
-    }
-
-    /** Re-compares everything, for when the "only sandbox work" switch changes. */
-    public static void rescan() {
-        if (target != null) reset(Minecraft.getInstance().level);
     }
 
     /** The overlay's line under the HUD's sandbox text. */
@@ -313,6 +325,7 @@ public final class Overlay {
         }
 
         byte[] kindAt = new byte[4096];   // 0 = same, otherwise Kind ordinal + 1
+        BlockState[] theirsAt = new BlockState[4096];
         int count = 0;
         for (int i = 0; i < 4096; i++) {
             BlockState here = live.get(i & 15, i >> 8, (i >> 4) & 15);
@@ -320,6 +333,7 @@ public final class Overlay {
             if (here.getBlock() == theirs.getBlock()) continue;
             Kind kind = here.isAir() ? Kind.ADDED : theirs.isAir() ? Kind.REMOVED : Kind.CHANGED;
             kindAt[i] = (byte) (kind.ordinal() + 1);
+            theirsAt[i] = theirs;
             count++;
         }
         if (gen != generation) return;
@@ -331,21 +345,23 @@ public final class Overlay {
         short[] indices = new short[count];
         byte[] kinds = new byte[count];
         byte[] faces = new byte[count];
+        BlockState[] theirs = new BlockState[count];
         int n = 0;
         for (int i = 0; i < 4096; i++) {
             if (kindAt[i] == 0) continue;
             indices[n] = (short) i;
             kinds[n] = (byte) (kindAt[i] - 1);
             faces[n] = exposedFaces(kindAt, i);
+            theirs[n] = theirsAt[i];
             n++;
         }
-        DIFFS.put(sectionPos, new SectionDiff(sx, sy, sz, indices, kinds, faces));
+        DIFFS.put(sectionPos, new SectionDiff(sx, sy, sz, indices, kinds, faces, theirs));
     }
 
     /**
-     * Which of a box's six faces to draw: a face against a neighbour of the same
-     * colour is hidden, so a solid build draws as one shell rather than every
-     * inner face. Faces on the section's edge are always drawn.
+     * Which of a block's six faces to draw: a face against a neighbour of the same
+     * colour is hidden, so a solid build draws as one see-through shell rather
+     * than every inner face. Faces on the section's edge are always drawn.
      * Bits: 0 down, 1 up, 2 north, 3 south, 4 west, 5 east.
      */
     private static byte exposedFaces(byte[] kindAt, int i) {

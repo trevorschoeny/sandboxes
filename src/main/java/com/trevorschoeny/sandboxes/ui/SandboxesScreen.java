@@ -17,6 +17,7 @@ import com.trevlar.menukit.api.element.Flow;
 import com.trevlar.menukit.api.element.Icon;
 import com.trevlar.menukit.api.element.PanelElement;
 import com.trevlar.menukit.api.element.Tabs;
+import com.trevlar.menukit.api.element.Slider;
 import com.trevlar.menukit.api.element.TextField;
 import com.trevlar.menukit.api.element.TextLabel;
 import com.trevlar.menukit.api.element.TextRole;
@@ -355,15 +356,25 @@ public final class SandboxesScreen extends MKScreen {
         body.addAll(setting("sandboxes.settings.quick", SandboxesConfig::quickButton, SandboxesConfig::setQuickButton, 0));
         body.addAll(setting("sandboxes.settings.quick_inventory",
                 SandboxesConfig::quickButtonInventory, SandboxesConfig::setQuickButtonInventory, 48));
+        body.addAll(setting("sandboxes.settings.opacity",
+                Slider.ofInts(SandboxesConfig.OPACITY_MIN, SandboxesConfig.OPACITY_MAX).size(120, 20)
+                        .state(SandboxesConfig::overlayOpacity, SandboxesConfig::setOverlayOpacity)
+                        .label(v -> Component.literal(v + "%"))
+                        .build(), 96));
         return body;
     }
 
     /** A switch with its name on the left, the toggle on the right, and a grey line under it saying what it does. */
     private static List<PanelElement> setting(String key, BooleanSupplier get, Consumer<Boolean> set, int y) {
+        return setting(key, Toggle.builder().size(60, 20).state(get::getAsBoolean, set).build(), y);
+    }
+
+    /** A setting's name on the left, its control on the right, and a grey line under it saying what it does. */
+    private static List<PanelElement> setting(String key, PanelElement control, int y) {
         return List.of(Flow.builder().at(0, y)
                         .add(TextLabel.builder().text(Component.translatable(key)).build())
                         .add(Flow.spacer())
-                        .add(Toggle.builder().size(60, 20).state(get::getAsBoolean, set).build())
+                        .add(control)
                         .build(),
                 TextLabel.builder().text(Component.translatable(key + ".desc"))
                         .role(TextRole.MUTED).at(0, y + 24).build());

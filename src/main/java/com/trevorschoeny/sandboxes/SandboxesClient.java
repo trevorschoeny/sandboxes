@@ -4,6 +4,7 @@ import com.trevorschoeny.sandboxes.config.SandboxesConfig;
 import com.trevorschoeny.sandboxes.overlay.Overlay;
 import com.trevorschoeny.sandboxes.overlay.OverlayHud;
 import com.trevorschoeny.sandboxes.overlay.OverlayKeys;
+import com.trevorschoeny.sandboxes.overlay.OverlayLook;
 import com.trevorschoeny.sandboxes.overlay.OverlayRenderer;
 import com.trevorschoeny.sandboxes.sandbox.LegacyMigration;
 import com.trevorschoeny.sandboxes.ui.InSandboxHud;
@@ -33,6 +34,7 @@ public class SandboxesClient implements ClientModInitializer {
         Overlay.install();
         OverlayRenderer.install();
         OverlayHud.install();
+        OverlayLook.install();
         OverlayKeys.install();
 
         // Bring any Sandboxes 1.0.0 layout forward once the client is up: still
