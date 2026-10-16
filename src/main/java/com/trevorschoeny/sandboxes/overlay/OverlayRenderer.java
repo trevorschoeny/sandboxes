@@ -71,6 +71,9 @@ public final class OverlayRenderer {
     /** Pushes the outline a hair outward, so the block under it doesn't swallow the line. */
     private static final float INFLATE = 0.003f;
 
+    /** {@link Direction#values()} once: it copies the array on every call, and this is read per ghost per frame. */
+    private static final Direction[] DIRECTIONS = Direction.values();
+
     // Render-thread only.
     private static final PoseStack.Pose SCRATCH = new PoseStack.Pose();
     private static final QuadInstance QUAD = new QuadInstance();
@@ -136,7 +139,7 @@ public final class OverlayRenderer {
         QUAD.setOverlayCoords(OverlayTexture.NO_OVERLAY);
         for (BlockStateModelPart part : parts) {
             for (BakedQuad quad : part.getQuads(null)) out.putBakedQuad(SCRATCH, quad, QUAD);
-            for (Direction side : Direction.values()) {
+            for (Direction side : DIRECTIONS) {
                 // exposedFaces' bits follow Direction's order: down, up, north, south, west, east.
                 if ((exposed & (1 << side.ordinal())) == 0) continue;
                 for (BakedQuad quad : part.getQuads(side)) out.putBakedQuad(SCRATCH, quad, QUAD);
@@ -209,7 +212,7 @@ public final class OverlayRenderer {
             List<BlockStateModelPart> parts = new ArrayList<>();
             models.get(s).collectParts(RandomSource.create(42L), parts);
             boolean anyQuads = parts.stream().anyMatch(p -> !p.getQuads(null).isEmpty()
-                    || Arrays.stream(Direction.values()).anyMatch(d -> !p.getQuads(d).isEmpty()));
+                    || Arrays.stream(DIRECTIONS).anyMatch(d -> !p.getQuads(d).isEmpty()));
             return anyQuads ? List.copyOf(parts) : List.of();
         });
     }

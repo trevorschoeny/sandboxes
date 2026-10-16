@@ -1,6 +1,7 @@
 package com.trevorschoeny.sandboxes.mixin;
 
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
+import com.trevorschoeny.sandboxes.sandbox.DiskJobs;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 import com.trevorschoeny.sandboxes.ui.SandboxesScreen;
@@ -79,6 +80,12 @@ public abstract class PauseScreenMixin extends Screen {
                             b -> minecraft.gui.setScreen(SandboxesScreen.forWorld(self, levelId)))
                     .bounds(x, y, width, 20).build();
         }
+        // Leaving closes the world and saves it again under a copy that's still
+        // reading it, so no way out while one runs. DiskJobs re-lays this menu out
+        // when the copy finishes, which turns them back on.
+        boolean copying = DiskJobs.running();
+        ours.active = !copying;
+        quitButton.active = !copying;
         addRenderableWidget(ours);
     }
 }

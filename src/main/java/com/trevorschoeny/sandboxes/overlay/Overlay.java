@@ -420,7 +420,9 @@ public final class Overlay {
 
     /** The worlds agree in this section now. Only for the current session: an old one's answer means nothing. */
     private static void retract(int gen, long sectionPos) {
-        if (gen == generation) DIFFS.remove(sectionPos);
+        // Checked inside the map's own atomic step, so a reset and a new session's
+        // result can't slip in between the check and the removal.
+        DIFFS.computeIfPresent(sectionPos, (key, old) -> gen == generation ? null : old);
     }
 
     /**

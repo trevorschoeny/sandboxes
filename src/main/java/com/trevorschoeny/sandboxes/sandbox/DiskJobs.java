@@ -3,6 +3,7 @@ package com.trevorschoeny.sandboxes.sandbox;
 import com.trevorschoeny.sandboxes.SandboxesClient;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
 
 import org.jspecify.annotations.Nullable;
@@ -17,7 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>While any of them runs, nothing may leave the world: closing it saves its
  * region files again, under a copy that is still reading them, and the new
  * sandbox comes out torn. {@link WorldSwitch} asks {@link #running()} before
- * every world switch, and the screen and quick button grey their ways out.
+ * every world switch, and the screen, the quick button and the pause menu
+ * (Save and Quit included) grey their ways out. Quitting the game outright
+ * can't be stopped.
  */
 public final class DiskJobs {
 
@@ -63,7 +66,13 @@ public final class DiskJobs {
             } finally {
                 if (sandboxId != null) BUSY.remove(sandboxId);
                 else copying = null;
-                Minecraft.getInstance().execute(finished);
+                Minecraft.getInstance().execute(() -> {
+                    // A pause menu opened during the copy greyed its ways out; lay it
+                    // out again so they come back.
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc.gui.screen() instanceof PauseScreen pause) pause.resize(pause.width, pause.height);
+                    finished.run();
+                });
             }
         });
     }

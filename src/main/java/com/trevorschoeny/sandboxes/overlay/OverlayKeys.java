@@ -119,11 +119,13 @@ public final class OverlayKeys {
     /**
      * The binding's id, from the sandbox's folder name. Ours are UUIDs, but a
      * folder copied by hand ("<id> copy") can hold a space or capitals, which an
-     * id can't, and a bad id would fail every join of that world; those
-     * characters become underscores.
+     * id can't, and a bad id would fail every join of that world. Those
+     * characters become underscores, plus a hash of the real name so two
+     * folders that differ only there ("A b", "a_b") keep separate keys.
      */
     private static Identifier idFor(Sandbox sandbox) {
         String path = sandbox.id().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_");
+        if (!path.equals(sandbox.id())) path += "_" + Integer.toHexString(sandbox.id().hashCode());
         return Identifier.fromNamespaceAndPath("sandboxes", "overlay/" + path);
     }
 }
