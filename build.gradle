@@ -58,9 +58,6 @@ dependencies {
     compileOnly "com.terraformersmc:modmenu:21.0.0"
     localRuntime "com.terraformersmc:modmenu:21.0.0"
 
-    // YACL: the config screen, bundled into the jar (jar-in-jar).
-    implementation "maven.modrinth:yacl:3.9.7+26.3-fabric"
-    include        "maven.modrinth:yacl:3.9.7+26.3-fabric"
 }
 
 loom {

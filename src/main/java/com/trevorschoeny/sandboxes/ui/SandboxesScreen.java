@@ -1,7 +1,6 @@
 package com.trevorschoeny.sandboxes.ui;
 
 import com.trevorschoeny.sandboxes.SandboxesClient;
-import com.trevorschoeny.sandboxes.config.SandboxesConfigScreen;
 import com.trevorschoeny.sandboxes.overlay.Overlay;
 import com.trevorschoeny.sandboxes.overlay.OverlayKeys;
 import com.trevorschoeny.sandboxes.sandbox.Sandbox;
@@ -129,13 +128,20 @@ public class SandboxesScreen extends Screen {
 
         createButton = addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.create"), b -> create())
-                .bounds(centerX - 154, row3, 150, 20).build());
+                .bounds(centerX - 160, row3, 120, 20).build());
         addRenderableWidget(Button.builder(
                         Component.translatable("sandboxes.button.settings"),
-                        b -> pendingScreen = SandboxesConfigScreen.create(this))
-                .bounds(centerX + 4, row3, 72, 20).build());
+                        b -> pendingScreen = SandboxesScreens.settings(this))
+                .bounds(centerX - 36, row3, 64, 20).build());
+        // ponytail: comparison only; goes once Trev picks a screen.
+        addRenderableWidget(Button.builder(
+                        Component.translatable("sandboxes.button.compact"), b -> {
+                            SandboxesScreens.preferCompact(true);
+                            pendingScreen = SandboxesScreens.sandboxes(parent, worldId);
+                        })
+                .bounds(centerX + 32, row3, 80, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-                .bounds(centerX + 80, row3, 74, 20).build());
+                .bounds(centerX + 116, row3, 44, 20).build());
 
         refresh();
         updateButtons();

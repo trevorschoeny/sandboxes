@@ -7,6 +7,6 @@ import com.terraformersmc.modmenu.api.ModMenuApi;
 public final class SandboxesConfigModMenu implements ModMenuApi {
     @Override
     public ConfigScreenFactory<?> getModConfigScreenFactory() {
-        return SandboxesConfigScreen::create;
+        return com.trevorschoeny.sandboxes.ui.SandboxesScreens::settings;
     }
 }

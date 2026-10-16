@@ -31,5 +31,16 @@
   "key.sandboxes.hop": "Hop to sandbox and back",
   "sandboxes.binding.overlay": "Sandbox overlay: %s",
   "sandboxes.button.overlay_key.tooltip": "This sandbox's overlay key. In your world it shows this sandbox's overlay; inside the sandbox it compares with your world. Right-click to clear.",
-  "sandboxes.screen.key_conflict": "Overlay key also used by: %s"
+  "sandboxes.screen.key_conflict": "Overlay key also used by: %s",
+  "sandboxes.compact.title": "Sandboxes",
+  "sandboxes.compact.tab.sandboxes": "Sandboxes",
+  "sandboxes.compact.tab.settings": "Settings",
+  "sandboxes.compact.classic": "Classic view",
+  "sandboxes.compact.new": "+ New sandbox",
+  "sandboxes.compact.overlay": "Overlay",
+  "sandboxes.compact.rename.save": "Save name",
+  "sandboxes.compact.detail": "%s  ·  %s",
+  "sandboxes.button.compact": "Compact view",
+  "sandboxes.settings.quick": "Quick sandbox button",
+  "sandboxes.settings.quick.desc": "A small button in the pause menu's top-right corner. In your world it jumps to the sandbox you used last; inside a sandbox it takes you back."
 }

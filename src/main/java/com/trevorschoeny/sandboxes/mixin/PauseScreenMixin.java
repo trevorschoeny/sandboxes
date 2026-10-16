@@ -3,7 +3,7 @@ package com.trevorschoeny.sandboxes.mixin;
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
-import com.trevorschoeny.sandboxes.ui.SandboxesScreen;
+import com.trevorschoeny.sandboxes.ui.SandboxesScreens;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -76,7 +76,7 @@ public abstract class PauseScreenMixin extends Screen {
         } else {
             ours = Button.builder(
                             Component.translatable("sandboxes.pause.open"),
-                            b -> minecraft.gui.setScreen(new SandboxesScreen(self, levelId)))
+                            b -> minecraft.gui.setScreen(SandboxesScreens.sandboxes(self, levelId)))
                     .bounds(x, y, width, 20).build();
         }
         addRenderableWidget(ours);
