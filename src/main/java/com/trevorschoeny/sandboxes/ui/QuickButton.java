@@ -26,11 +26,12 @@ import java.util.function.BooleanSupplier;
 
 /**
  * The quick-sandbox button: one small button in the pause menu's top-right
- * corner, and optionally the same corner of the inventory. In a world it jumps to the sandbox used last; in a sandbox it goes
- * back. It stays hidden when the world has no sandbox to jump to. Its tooltip names where it goes.
+ * corner, and optionally the same corner of the inventory. In a world it jumps
+ * to the sandbox used last; in a sandbox it goes back. It stays hidden when the
+ * world has no sandbox to jump to. Its tooltip names where it goes.
  *
- * <p>This is the one piece built with MenuKit, which supports a panel on
- * {@code PauseScreen} and whose {@code visibleWhen} hides rendering and clicks
+ * <p>It is a MenuKit panel, because MenuKit supports a panel on
+ * {@code PauseScreen} and its {@code visibleWhen} hides rendering and clicks
  * together.
  */
 public final class QuickButton {

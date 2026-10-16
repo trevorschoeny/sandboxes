@@ -60,10 +60,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * and hiding any difference hides the feedback a builder needs. A main world
  * that has moved on is what Sync is for.
  *
- * ponytail: compares blocks, not block states, so a rotated stair or a
- * different redstone power level doesn't show. Comparing full states lit up
- * every grown crop and flowing water level; a fourth "same block, different
- * state" colour is the upgrade if that's missed.
+ * <p>It compares blocks, not block states, so a rotated stair or a different
+ * redstone power level doesn't show. Comparing full states lit up every grown
+ * crop and flowing water level. A fourth "same block, different state" colour
+ * would add them back if they're missed.
  */
 public final class Overlay {
 
@@ -156,7 +156,7 @@ public final class Overlay {
 
     // Toggling
 
-    /** The list's Overlay button: show this sandbox, or turn it off if it's already showing. */
+    /** A card's eye button: show this sandbox, or turn it off if it's already showing. */
     public static void toggleFor(Sandbox sandbox) {
         if (showing(sandbox)) {
             off();
@@ -423,7 +423,6 @@ public final class Overlay {
         if (gen == generation) DIFFS.remove(sectionPos);
     }
 
-
     /**
      * Which of a block's six faces to draw. A face is hidden behind a neighbour of
      * the same colour that would cover it: a full solid block, or, where both are
@@ -449,7 +448,7 @@ public final class Overlay {
         if (kindAt[j] != kindAt[i]) return false;
         BlockState mine = shownAt[i], theirs = shownAt[j];
         if (theirs.isSolidRender()) return true;
-        // ponytail: "drawn as a box" guessed from the render shape; a model-less
+        // "Drawn as a box" is guessed from the render shape, so a model-less
         // block-entity block (a chest) still draws its inner box faces.
         return mine.getRenderShape() == RenderShape.INVISIBLE && theirs.getRenderShape() == RenderShape.INVISIBLE;
     }

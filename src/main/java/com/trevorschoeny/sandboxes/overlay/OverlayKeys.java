@@ -32,8 +32,8 @@ import java.util.function.Consumer;
  * when they leave. In the main world each key shows its sandbox; inside a
  * sandbox, that sandbox's key compares it with the main world.
  *
- * <p>Keybindery is optional. Without it the list hides the key button and the
- * Overlay button still works.
+ * <p>Keybindery is optional. Without it the cards hide the key button, and the
+ * eye button still works.
  */
 public final class OverlayKeys {
 
@@ -103,7 +103,7 @@ public final class OverlayKeys {
                 Chord.deserialize(sandbox.overlayKey()), onChange);
     }
 
-    /** What else this sandbox's key is bound to, for the list's warning line. */
+    /** What else this sandbox's key is bound to, for the card's warning line. */
     public static List<BindingConflict> conflicts(Sandbox sandbox) {
         if (!available()) return List.of();
         Chord chord = Chord.deserialize(sandbox.overlayKey());
@@ -118,7 +118,7 @@ public final class OverlayKeys {
 
     /**
      * The binding's id, from the sandbox's folder name. Ours are UUIDs, but a
-     * folder copied by hand ("… copy") can hold a space or capitals, which an
+     * folder copied by hand ("<id> copy") can hold a space or capitals, which an
      * id can't, and a bad id would fail every join of that world; those
      * characters become underscores.
      */

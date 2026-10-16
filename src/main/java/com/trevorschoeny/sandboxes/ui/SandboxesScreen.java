@@ -60,8 +60,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
- * The Sandboxes screen, built with MenuKit: one card per sandbox. Trev picked
- * it over a vanilla-style world list on 2026-10-15.
+ * The Sandboxes screen, built with MenuKit: one card per sandbox.
  *
  * <p>Every row carries its own controls, because players switch between worlds
  * from this menu far more often than they open a world from the game menu, so
@@ -69,13 +68,10 @@ import java.util.function.Consumer;
  * with no world (from Mod Menu on the title screen) only Settings shows, since
  * sandboxes exist inside their world.
  *
- * <p>This is also the screen that goes into Mod Hub as a tab later; for now it
- * stands alone.
- *
- * ponytail: MenuKit freezes a panel's elements once built, so any change to the
- * rows (a sandbox made, renamed, synced, deleted) rebuilds the screen, keeping
- * the tab and scroll. MenuKit's coming list that changes while open replaces
- * this.
+ * <p>MenuKit freezes a panel's elements once built, so any change to the rows
+ * (a sandbox made, renamed, synced, deleted) rebuilds the screen, keeping the
+ * tab and scroll. A MenuKit list that can change while open would make the
+ * rebuild unnecessary.
  */
 public final class SandboxesScreen extends MKScreen {
 
@@ -317,9 +313,9 @@ public final class SandboxesScreen extends MKScreen {
      * The sandbox's own icon.png, loaded the way vanilla's world list does; a
      * sandbox with none shows vanilla's unknown-world picture.
      *
-     * ponytail: one 64x64 texture per sandbox, kept for the session (dropped on
-     * sync or delete, whose icon changes). Close them with the screen if a
-     * world ever has hundreds of sandboxes.
+     * <p>One 64x64 texture per sandbox, kept for the session (dropped on sync or
+     * delete, whose icon changes). Close them with the screen if a world ever has
+     * hundreds of sandboxes.
      */
     private static Identifier worldIcon(Sandbox sandbox) {
         return ICONS.computeIfAbsent(sandbox.id(), id -> {

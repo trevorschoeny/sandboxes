@@ -31,7 +31,10 @@ public final class SandboxesConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static boolean quickButton = true;
-    /** The same button above the inventory too. Off by default: that edge is where inventory mods put their own buttons. */
+    /**
+     * The same button in the inventory screen's top-right corner. Off by default,
+     * because that corner is where inventory mods put their own buttons.
+     */
     private static boolean quickButtonInventory = false;
 
     private static boolean loaded = false;

@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Draws the overlay (Trev, 2026-10-15). Colour lives only in thick outlines,
+ * Draws the overlay. Colour lives only in thick outlines,
  * one per block, because a see-through colour laid over a block mixes with it
  * (red over gold reads orange):
  * <ul>
@@ -56,8 +56,8 @@ import java.util.Map;
  * chunk rendering but not these events. Ghosts are full-bright so they read at
  * night; ghosts and lines hide behind real walls like any block.
  *
- * ponytail: every visible difference is written each frame from the cached
- * results; the ceiling is tens of thousands of visible blocks. The upgrade is
+ * <p>Every visible difference is written each frame from the cached results,
+ * which holds up to tens of thousands of visible blocks. Past that, the fix is
  * GPU buffers built once per section change, as vanilla's cloud renderer does.
  */
 public final class OverlayRenderer {
@@ -194,9 +194,9 @@ public final class OverlayRenderer {
      * A block state's model parts, or none when it draws no model (air, water,
      * lava, block-entity blocks such as chests).
      *
-     * ponytail: one fixed random pick per state, so a block with several
-     * variants (grass's rotations, stone's mirrors) ghosts as one of them
-     * everywhere. Seed by position if that ever reads wrong.
+     * <p>One fixed random pick per state, so a block with several variants
+     * (grass's rotations, stone's mirrors) ghosts as one of them everywhere.
+     * Seed by position if that ever reads wrong.
      */
     private static List<BlockStateModelPart> parts(BlockState state) {
         BlockStateModelSet models = Minecraft.getInstance().getModelManager().getBlockStateModelSet();
@@ -213,5 +213,4 @@ public final class OverlayRenderer {
             return anyQuads ? List.copyOf(parts) : List.of();
         });
     }
-
 }
