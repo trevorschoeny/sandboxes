@@ -12,8 +12,8 @@ import com.trevorschoeny.keybindery.api.Chord;
 
 import com.trevlar.menukit.api.dialog.ConfirmDialog;
 import com.trevlar.menukit.api.element.Button;
-import com.trevlar.menukit.api.element.Checkbox;
 import com.trevlar.menukit.api.element.Flow;
+import com.trevlar.menukit.api.element.Icon;
 import com.trevlar.menukit.api.element.PanelElement;
 import com.trevlar.menukit.api.element.Tabs;
 import com.trevlar.menukit.api.element.TextField;
@@ -28,14 +28,21 @@ import com.trevlar.menukit.api.panel.PanelPosition;
 import com.trevlar.menukit.api.panel.PanelStyle;
 import com.trevlar.menukit.api.panel.ScreenKind;
 
+import com.mojang.blaze3d.platform.NativeImage;
+
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.FaviconTexture;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -82,6 +89,8 @@ public final class CompactSandboxesScreen extends MKScreen {
     private static final Map<String, String> SIZES = new ConcurrentHashMap<>();
     /** What the confirmation dialog is asking about, or null when it's closed. */
     private static @Nullable Confirm confirm = null;
+    /** World images by sandbox id, loaded on first draw (client thread only). */
+    private static final Map<String, FaviconTexture> ICONS = new HashMap<>();
 
     private record Confirm(Sandbox sandbox, boolean delete) {}
 
@@ -183,12 +192,12 @@ public final class CompactSandboxesScreen extends MKScreen {
         }
         for (Sandbox sandbox : sandboxes) {
             body.add(row(sandbox, y));
-            y += 24;
+            y += ROW_STEP;
         }
         Component inProgress = copying;
         if (inProgress != null) {
-            body.add(TextLabel.builder().text(inProgress).role(TextRole.MUTED).at(0, y + 6).build());
-            y += 24;
+            body.add(TextLabel.builder().text(inProgress).role(TextRole.MUTED).at(0, y + 10).build());
+            y += ROW_STEP;
         }
         body.add(Button.builder().label(Component.translatable("sandboxes.compact.new")).size(140, 20)
                 .disabledWhen(() -> copying != null)
@@ -197,31 +206,51 @@ public final class CompactSandboxesScreen extends MKScreen {
         return body;
     }
 
-    /** One sandbox on one line: who it is, then everything you can do to it. */
-    private static PanelElement row(Sandbox sandbox, int y) {
-        Flow.Builder row = Flow.builder().at(0, y).gap(4);
-        Component busy = BUSY.get(sandbox.id());
+    /** A card (6 px padding around name, grey line and buttons), plus the gap to the next. */
+    private static final int ROW_STEP = 58;
+    /** The world image left of the title: vanilla's world list draws 32, this a little smaller. */
+    private static final int ICON_SIZE = 28;
 
-        if (sandbox.id().equals(editingId)) {
-            row.add(TextField.builder().size(140, 20).maxLength(64)
-                    .state(() -> draftName, text -> draftName = text)
-                    .onSubmit(text -> finishRename(sandbox))
+    private static final Identifier EYE_OPEN = Identifier.fromNamespaceAndPath("sandboxes", "eye_open");
+    private static final Identifier EYE_CLOSED = Identifier.fromNamespaceAndPath("sandboxes", "eye_closed");
+
+    /**
+     * One sandbox: its world image, then a stack of the name, a grey line of
+     * when and how big, and every button for it.
+     */
+    private static PanelElement row(Sandbox sandbox, int y) {
+        Flow.Builder text = Flow.builder().vertical().gap(2);
+        boolean editing = sandbox.id().equals(editingId);
+        if (editing) {
+            text.add(TextField.builder().size(140, 20).maxLength(64)
+                    .state(() -> draftName, name -> draftName = name)
+                    .onSubmit(name -> finishRename(sandbox))
                     .build());
         } else {
-            row.add(TextLabel.builder().text(Component.literal(sandbox.name())).build());
+            text.add(TextLabel.builder().text(Component.literal(sandbox.name())).build());
         }
-        row.add(TextLabel.builder().text(detail(sandbox)).role(TextRole.MUTED).build());
-        row.add(Flow.spacer());
+        text.add(TextLabel.builder().text(detail(sandbox)).role(TextRole.MUTED).build());
 
-        if (busy != null) {
-            // While it copies, the row says so and offers nothing that would collide.
-            row.add(TextLabel.builder().text(busy).role(TextRole.MUTED).build());
-            return row.build();
-        }
+        Component busy = BUSY.get(sandbox.id());
+        // While it copies, the row says so and offers nothing that would collide.
+        text.add(busy != null
+                ? TextLabel.builder().text(busy).role(TextRole.MUTED).build()
+                : buttons(sandbox, editing));
 
-        row.add(Checkbox.builder().label(Component.translatable("sandboxes.compact.overlay"))
-                .state(() -> Overlay.showing(sandbox), on -> Overlay.toggleFor(sandbox))
-                .build());
+        return Flow.builder().boxed().at(0, y).gap(6)
+                .add(Icon.builder().texture(() -> worldIcon(sandbox), 64).size(ICON_SIZE, ICON_SIZE).build())
+                .add(text.build())
+                .build();
+    }
+
+    /** Everything you can do to a sandbox, one click each. */
+    private static PanelElement buttons(Sandbox sandbox, boolean editing) {
+        Flow.Builder row = Flow.builder().gap(2);
+        // Eye open while this sandbox's overlay shows; it appears once the screen closes.
+        row.add(Button.builder().size(20, 20)
+                .icon(() -> Overlay.showing(sandbox) ? EYE_OPEN : EYE_CLOSED)
+                .tooltip(Component.translatable("sandboxes.compact.overlay"))
+                .onClick(() -> Overlay.toggleFor(sandbox)).build());
         if (OverlayKeys.available()) {
             row.add(WidgetHost.builder()
                     .widget(() -> OverlayKeys.button(0, 0, 50, 20, sandbox, chord -> setKey(sandbox, chord)))
@@ -235,7 +264,6 @@ public final class CompactSandboxesScreen extends MKScreen {
                     confirm = new Confirm(sandbox, false);
                     rebuild();
                 }).build());
-        boolean editing = sandbox.id().equals(editingId);
         row.add(Button.builder().label(Component.literal(editing ? "✓" : "✎")).size(20, 20)
                 .tooltip(Component.translatable(editing ? "sandboxes.compact.rename.save" : "sandboxes.button.rename"))
                 .onClick(() -> {
@@ -258,6 +286,34 @@ public final class CompactSandboxesScreen extends MKScreen {
                     rebuild();
                 }).build());
         return row.build();
+    }
+
+    /**
+     * The sandbox's own icon.png, loaded the way vanilla's world list does; a
+     * sandbox with none shows vanilla's unknown-world picture.
+     *
+     * ponytail: one 64x64 texture per sandbox, kept for the session (dropped on
+     * sync or delete, whose icon changes). Close them with the screen if a
+     * world ever has hundreds of sandboxes.
+     */
+    private static Identifier worldIcon(Sandbox sandbox) {
+        return ICONS.computeIfAbsent(sandbox.id(), id -> {
+            FaviconTexture texture = FaviconTexture.forWorld(Minecraft.getInstance().getTextureManager(), sandbox.levelId());
+            Path file = sandbox.dir().resolve("icon.png");
+            if (Files.isRegularFile(file)) {
+                try (InputStream in = Files.newInputStream(file)) {
+                    texture.upload(NativeImage.read(in));
+                } catch (Exception e) {   // unreadable, or not 64x64: show the unknown picture
+                    SandboxesClient.LOGGER.warn("[sandboxes] couldn't load the icon of {}", id, e);
+                }
+            }
+            return texture;
+        }).textureLocation();
+    }
+
+    private static void forgetIcon(String sandboxId) {
+        FaviconTexture texture = ICONS.remove(sandboxId);
+        if (texture != null) texture.close();
     }
 
     /** "Oct 14 · 412 MB", or "never joined · 412 MB". */
@@ -359,6 +415,7 @@ public final class CompactSandboxesScreen extends MKScreen {
                     copying = null;
                 }
                 Minecraft.getInstance().execute(() -> {
+                    if (sandboxId != null) forgetIcon(sandboxId);
                     OverlayKeys.refresh();
                     rebuild();
                 });
