@@ -6,7 +6,6 @@ import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 
 import com.trevlar.menukit.api.element.Button;
 import com.trevlar.menukit.api.panel.InsideRegion;
-import com.trevlar.menukit.api.panel.OutsideRegion;
 import com.trevlar.menukit.api.panel.Panel;
 import com.trevlar.menukit.api.panel.PanelPosition;
 import com.trevlar.menukit.api.panel.PanelStyle;
@@ -26,7 +25,7 @@ import java.util.function.BooleanSupplier;
 
 /**
  * The quick-sandbox button: one small button in the pause menu's top-right
- * corner, and optionally above the inventory too. In a world it jumps to the sandbox used last; in a sandbox it goes
+ * corner, and optionally the same corner of the inventory. In a world it jumps to the sandbox used last; in a sandbox it goes
  * back. It stays hidden when the world has no sandbox to jump to. Its tooltip names where it goes.
  *
  * <p>This is the one piece built with MenuKit, which supports a panel on
@@ -63,11 +62,10 @@ public final class QuickButton {
         new VanillaScreenPanelAdapter(panel("sandboxes.quick",
                 PanelPosition.screenAnchor(InsideRegion.TOP_RIGHT), SandboxesConfig::quickButton), 0)
                 .on(PauseScreen.class);
-        // Above the inventory's top-right corner, survival and creative alike; the
-        // region follows the frame (creative's tab rows, an open recipe book) and
-        // shares the edge with other mods' buttons without overlapping.
+        // The same corner of the inventory screen, survival and creative alike, so
+        // the button is where your hand already goes in the pause menu.
         new ScreenPanelAdapter(panel("sandboxes.quick.inventory",
-                PanelPosition.region(OutsideRegion.TOP_ALIGN_RIGHT), SandboxesConfig::quickButtonInventory))
+                PanelPosition.screenAnchor(InsideRegion.TOP_RIGHT), SandboxesConfig::quickButtonInventory))
                 .on(InventoryScreen.class, CreativeModeInventoryScreen.class);
     }
 
