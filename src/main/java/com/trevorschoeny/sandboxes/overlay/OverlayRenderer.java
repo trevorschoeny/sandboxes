@@ -1,7 +1,5 @@
 package com.trevorschoeny.sandboxes.overlay;
 
-import com.trevorschoeny.sandboxes.config.SandboxesConfig;
-
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -18,9 +16,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 import org.jspecify.annotations.Nullable;
 
@@ -31,38 +31,44 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Draws the overlay (Trev, 2026-10-15):
+ * Draws the overlay (Trev, 2026-10-15). Colour lives only in thick outlines,
+ * one per block, because a see-through colour laid over a block mixes with it
+ * (red over gold reads orange):
  * <ul>
  *   <li><b>Added</b> (the other world has a block, you have air): a see-through
- *       green ghost of the other world's block, its real model and texture.</li>
- *   <li><b>Removed</b> (you have a block, the other world has air): your block
- *       tinted red, its own shape, not a box.</li>
- *   <li><b>Changed</b> (a different block): your block tinted yellow. Break it and
- *       the spot becomes "added", so the green ghost of what goes there appears.</li>
+ *       ghost of that block in its true colours, so oak reads as oak, outlined
+ *       green.</li>
+ *   <li><b>Removed</b> (you have a block, the other world has air): your block as
+ *       it is, outlined red.</li>
+ *   <li><b>Changed</b> (a different block): your block outlined yellow. Break it and
+ *       the spot becomes "added", so the ghost of what goes there appears.</li>
  * </ul>
- * A tint over a real block is its own model drawn a hair larger, so it wraps the
- * block instead of flickering into it. A block with no model of its own (water,
- * lava, a chest, which draw some other way) falls back to a tinted box. How
- * see-through all of it is comes from the opacity setting.
+ * An outline follows the block's own shape (a torch's stick, a stair's step).
+ * Water, lava and chests, which have no shape of their own here, get the outline
+ * of a full block. A full block's edge is left out when both faces beside it
+ * are covered by blocks of the same colour, so the inside of a build doesn't
+ * show through the ghosts as a cage of lines.
  *
  * <p>Drawn through Fabric's level render events and vanilla's own render types
- * (the moving-block one pistons use, and debug quads for the boxes), never raw
- * OpenGL, so it runs the same on the OpenGL and Vulkan backends, on Mac and
- * Windows, and alongside Sodium, which replaces vanilla's chunk rendering but
- * not these events. Ghosts are full-bright so they read at night, and hide
- * behind real walls like any block.
+ * (the moving-block one pistons use, and the lines vanilla's block outline
+ * uses), never raw OpenGL, so it runs the same on the OpenGL and Vulkan
+ * backends, on Mac and Windows, and alongside Sodium, which replaces vanilla's
+ * chunk rendering but not these events. Ghosts are full-bright so they read at
+ * night; ghosts and lines hide behind real walls like any block.
  *
- * ponytail: every visible difference's quads are written each frame from the
- * cached results. With faces between same-coloured neighbours hidden, that's
- * cheap for a build's worth of blocks; the ceiling is tens of thousands of
- * visible faces. The upgrade is GPU buffers built once per section change, as
- * vanilla's cloud renderer does.
+ * ponytail: every visible difference is written each frame from the cached
+ * results; the ceiling is tens of thousands of visible blocks. The upgrade is
+ * GPU buffers built once per section change, as vanilla's cloud renderer does.
  */
 public final class OverlayRenderer {
 
     private OverlayRenderer() {}
 
-    /** Pushes a tint or box a hair outward, so it doesn't flicker into the real block under it. */
+    /** How solid a ghost is: the alpha laid over its own colours. */
+    private static final int GHOST_ALPHA = 0x99 << 24;
+    /** Thick: about twice vanilla's block outline, so it reads from a distance. */
+    private static final float LINE_WIDTH = 5f;
+    /** Pushes the outline a hair outward, so the block under it doesn't swallow the line. */
     private static final float INFLATE = 0.003f;
 
     // Render-thread only.
@@ -79,68 +85,109 @@ public final class OverlayRenderer {
             if (level == null) return;
             Vec3 camera = context.levelState().cameraRenderState.pos;
             double maxDistance = (Minecraft.getInstance().options.getEffectiveRenderDistance() + 1) * 16.0;
-            int alpha = Math.round(SandboxesConfig.overlayOpacity() * 2.55f) << 24;
-            // Two passes over the same results: models with the block atlas, and boxes for what has no model.
             context.submitNodeCollector().submitCustomGeometry(context.poseStack(), RenderTypes.translucentMovingBlock(),
-                    (pose, out) -> draw(pose, out, level, camera, maxDistance, alpha, true));
-            context.submitNodeCollector().submitCustomGeometry(context.poseStack(), RenderTypes.debugQuads(),
-                    (pose, out) -> draw(pose, out, level, camera, maxDistance, alpha, false));
+                    (pose, out) -> forEachVisible(level, camera, maxDistance, (diff, n, kind, pos, shown) -> {
+                        if (kind == Overlay.Kind.ADDED) ghost(pose, out, camera, pos, shown, diff.exposedFaces()[n]);
+                    }));
+            context.submitNodeCollector().submitCustomGeometry(context.poseStack(), RenderTypes.lines(),
+                    (pose, out) -> forEachVisible(level, camera, maxDistance, (diff, n, kind, pos, shown) ->
+                            outline(pose, out, level, camera, pos, shown, kind, diff.exposedFaces()[n])));
         });
     }
 
-    /** One pass: {@code models} draws every difference that has a model, otherwise every one that doesn't. */
-    private static void draw(PoseStack.Pose pose, VertexConsumer out, ClientLevel level, Vec3 camera,
-                             double maxDistance, int alpha, boolean models) {
+    private interface Visit {
+        void visit(Overlay.SectionDiff diff, int n, Overlay.Kind kind, BlockPos pos, BlockState shown);
+    }
+
+    /**
+     * Every difference within render distance, with the block it shows: the
+     * other world's for a ghost, the one here for an outline over a real block.
+     */
+    private static void forEachVisible(ClientLevel level, Vec3 camera, double maxDistance, Visit visit) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (Overlay.SectionDiff diff : Overlay.DIFFS.values()) {
             int originX = diff.sectionX() * 16, originY = diff.sectionY() * 16, originZ = diff.sectionZ() * 16;
             if (Math.abs(originX + 8 - camera.x) > maxDistance || Math.abs(originZ + 8 - camera.z) > maxDistance) continue;
-
             for (int n = 0; n < diff.indices().length; n++) {
                 int i = diff.indices()[n];
                 Overlay.Kind kind = Overlay.Kind.values()[diff.kinds()[n]];
                 pos.set(originX + (i & 15), originY + (i >> 8), originZ + ((i >> 4) & 15));
-                // A ghost shows the other world's block; a tint wraps the one that's here.
                 BlockState shown = kind == Overlay.Kind.ADDED ? diff.theirs()[n] : level.getBlockState(pos);
-                List<BlockStateModelPart> parts = parts(shown);
-                if (parts.isEmpty() == models) continue;
-
-                // Positions relative to the camera, which is what the pose expects.
-                float x = (float) (pos.getX() - camera.x), y = (float) (pos.getY() - camera.y), z = (float) (pos.getZ() - camera.z);
-                int color = alpha | kind.rgb;
-                if (models) {
-                    // A ghost sits exactly in its cell; a tint over a real block a hair larger, from its centre.
-                    float grow = kind == Overlay.Kind.ADDED ? 1f : 1f + 2 * INFLATE;
-                    SCRATCH.set(pose);
-                    SCRATCH.translate(x + 0.5f, y + 0.5f, z + 0.5f);
-                    SCRATCH.scale(grow, grow, grow);
-                    SCRATCH.translate(-0.5f, -0.5f, -0.5f);
-                    model(SCRATCH, out, parts, color, diff.exposedFaces()[n]);
-                } else {
-                    box(pose, out, color, diff.exposedFaces()[n],
-                            x - INFLATE, y - INFLATE, z - INFLATE, x + 1 + INFLATE, y + 1 + INFLATE, z + 1 + INFLATE);
-                }
+                visit.visit(diff, n, kind, pos, shown);
             }
         }
     }
 
+    // Ghosts
+
     /**
-     * A block's model, every quad tinted one colour. A face that vanilla would
-     * cull against a solid neighbour is skipped when the neighbour is drawn in
-     * the same colour, so a wall of ghosts is one shell.
+     * The other world's block, see-through, in its own colours. A face that
+     * vanilla would cull against a solid neighbour is skipped when that
+     * neighbour is a ghost too, so a ghost wall is one shell.
      */
-    private static void model(PoseStack.Pose pose, VertexConsumer out, List<BlockStateModelPart> parts, int color, int exposed) {
-        QUAD.setColor(color);
+    private static void ghost(PoseStack.Pose pose, VertexConsumer out, Vec3 camera, BlockPos pos, BlockState state, int exposed) {
+        List<BlockStateModelPart> parts = parts(state);
+        if (parts.isEmpty()) return;   // water, lava, chests: the outline alone marks them
+        SCRATCH.set(pose);
+        // Positions relative to the camera, which is what the pose expects.
+        SCRATCH.translate((float) (pos.getX() - camera.x), (float) (pos.getY() - camera.y), (float) (pos.getZ() - camera.z));
+        QUAD.setColor(GHOST_ALPHA | 0xFFFFFF);
         QUAD.setLightCoords(LightCoordsUtil.FULL_BRIGHT);
         QUAD.setOverlayCoords(OverlayTexture.NO_OVERLAY);
         for (BlockStateModelPart part : parts) {
-            for (BakedQuad quad : part.getQuads(null)) out.putBakedQuad(pose, quad, QUAD);
+            for (BakedQuad quad : part.getQuads(null)) out.putBakedQuad(SCRATCH, quad, QUAD);
             for (Direction side : Direction.values()) {
-                if ((exposed & (1 << side.ordinal())) == 0) continue;
                 // exposedFaces' bits follow Direction's order: down, up, north, south, west, east.
-                for (BakedQuad quad : part.getQuads(side)) out.putBakedQuad(pose, quad, QUAD);
+                if ((exposed & (1 << side.ordinal())) == 0) continue;
+                for (BakedQuad quad : part.getQuads(side)) out.putBakedQuad(SCRATCH, quad, QUAD);
             }
         }
+    }
+
+    // Outlines
+
+    /** A full block's twelve edges, each with the two faces it joins (Direction ordinals) and its ends. */
+    private static final int[][] CUBE_EDGES = {
+            // along x: faces, then x0 y0 z0 x1 y1 z1
+            {0, 2, 0, 0, 0, 1, 0, 0}, {0, 3, 0, 0, 1, 1, 0, 1}, {1, 2, 0, 1, 0, 1, 1, 0}, {1, 3, 0, 1, 1, 1, 1, 1},
+            // along y
+            {2, 4, 0, 0, 0, 0, 1, 0}, {2, 5, 1, 0, 0, 1, 1, 0}, {3, 4, 0, 0, 1, 0, 1, 1}, {3, 5, 1, 0, 1, 1, 1, 1},
+            // along z
+            {0, 4, 0, 0, 0, 0, 0, 1}, {0, 5, 1, 0, 0, 1, 0, 1}, {1, 4, 0, 1, 0, 0, 1, 1}, {1, 5, 1, 1, 0, 1, 1, 1},
+    };
+
+    private static void outline(PoseStack.Pose pose, VertexConsumer out, ClientLevel level, Vec3 camera,
+                                BlockPos pos, BlockState shown, Overlay.Kind kind, int exposed) {
+        int color = 0xFF000000 | kind.rgb;
+        float x = (float) (pos.getX() - camera.x), y = (float) (pos.getY() - camera.y), z = (float) (pos.getZ() - camera.z);
+        // A ghost isn't in this world, so its shape is read with no neighbours around it.
+        VoxelShape shape = kind == Overlay.Kind.ADDED
+                ? shown.getShape(EmptyBlockGetter.INSTANCE, pos) : shown.getShape(level, pos);
+        if (shape.isEmpty() || shown.isSolidRender()) {
+            // A full block (or one with no shape, drawn as one): skip edges buried inside the build.
+            for (int[] e : CUBE_EDGES) {
+                if ((exposed & (1 << e[0])) == 0 && (exposed & (1 << e[1])) == 0) continue;
+                line(pose, out, color, x, y, z, e[2], e[3], e[4], e[5], e[6], e[7]);
+            }
+        } else {
+            shape.forAllEdges((x0, y0, z0, x1, y1, z1) ->
+                    line(pose, out, color, x, y, z, (float) x0, (float) y0, (float) z0, (float) x1, (float) y1, (float) z1));
+        }
+    }
+
+    /** One edge, in block-local 0..1 coordinates, pushed a hair out from the block's centre. */
+    private static void line(PoseStack.Pose pose, VertexConsumer out, int color, float x, float y, float z,
+                             float x0, float y0, float z0, float x1, float y1, float z1) {
+        x0 = grow(x0); y0 = grow(y0); z0 = grow(z0); x1 = grow(x1); y1 = grow(y1); z1 = grow(z1);
+        float dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+        float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        dx /= length; dy /= length; dz /= length;
+        out.addVertex(pose, x + x0, y + y0, z + z0).setColor(color).setNormal(pose, dx, dy, dz).setLineWidth(LINE_WIDTH);
+        out.addVertex(pose, x + x1, y + y1, z + z1).setColor(color).setNormal(pose, dx, dy, dz).setLineWidth(LINE_WIDTH);
+    }
+
+    private static float grow(float v) {
+        return 0.5f + (v - 0.5f) * (1 + 2 * INFLATE);
     }
 
     /**
@@ -167,22 +214,4 @@ public final class OverlayRenderer {
         });
     }
 
-    private static void box(PoseStack.Pose pose, VertexConsumer out, int color, int faces,
-                            float x0, float y0, float z0, float x1, float y1, float z1) {
-        if ((faces & 1) != 0)      quad(pose, out, color, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1); // down
-        if ((faces & 1 << 1) != 0) quad(pose, out, color, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0); // up
-        if ((faces & 1 << 2) != 0) quad(pose, out, color, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0); // north
-        if ((faces & 1 << 3) != 0) quad(pose, out, color, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1); // south
-        if ((faces & 1 << 4) != 0) quad(pose, out, color, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0); // west
-        if ((faces & 1 << 5) != 0) quad(pose, out, color, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1); // east
-    }
-
-    private static void quad(PoseStack.Pose pose, VertexConsumer out, int color,
-                             float ax, float ay, float az, float bx, float by, float bz,
-                             float cx, float cy, float cz, float dx, float dy, float dz) {
-        out.addVertex(pose, ax, ay, az).setColor(color);
-        out.addVertex(pose, bx, by, bz).setColor(color);
-        out.addVertex(pose, cx, cy, cz).setColor(color);
-        out.addVertex(pose, dx, dy, dz).setColor(color);
-    }
 }

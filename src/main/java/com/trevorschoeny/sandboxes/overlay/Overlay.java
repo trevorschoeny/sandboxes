@@ -67,11 +67,11 @@ public final class Overlay {
 
     private Overlay() {}
 
-    /** What the other world has at a position, seen from the world you're in. RGB; the alpha is the opacity setting. */
+    /** What the other world has at a position, seen from the world you're in, and its outline colour (RGB). */
     enum Kind {
-        ADDED(0x60FF60),     // other world: block, here: air
-        REMOVED(0xFF5050),   // other world: air, here: block
-        CHANGED(0xFFE040);   // both: a block, but different ones
+        ADDED(0x40E040),     // other world: block, here: air
+        REMOVED(0xFF4040),   // other world: air, here: block
+        CHANGED(0xFFD040);   // both: a block, but different ones
 
         final int rgb;
 

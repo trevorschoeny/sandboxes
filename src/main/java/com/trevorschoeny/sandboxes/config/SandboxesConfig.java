@@ -33,9 +33,6 @@ public final class SandboxesConfig {
     private static boolean quickButton = true;
     /** The same button above the inventory too. Off by default: that edge is where inventory mods put their own buttons. */
     private static boolean quickButtonInventory = false;
-    /** How solid the overlay's ghosts and tints are, in percent. */
-    private static int overlayOpacity = 50;
-    public static final int OPACITY_MIN = 10, OPACITY_MAX = 90;
 
     private static boolean loaded = false;
 
@@ -59,8 +56,6 @@ public final class SandboxesConfig {
                     ? root.get("quickButton").getAsBoolean() : quickButton;
             quickButtonInventory = root.has("quickButtonInventory") && root.get("quickButtonInventory").isJsonPrimitive()
                     ? root.get("quickButtonInventory").getAsBoolean() : quickButtonInventory;
-            overlayOpacity = root.has("overlayOpacity") && root.get("overlayOpacity").isJsonPrimitive()
-                    ? Math.clamp(root.get("overlayOpacity").getAsInt(), OPACITY_MIN, OPACITY_MAX) : overlayOpacity;
             SandboxesClient.LOGGER.info("[config] loaded from {}", path);
         } catch (IOException | JsonSyntaxException | IllegalStateException e) {
             SandboxesClient.LOGGER.error("[config] failed to read {}, using defaults", path, e);
@@ -75,7 +70,6 @@ public final class SandboxesConfig {
             root.addProperty("version", CURRENT_VERSION);
             root.addProperty("quickButton", quickButton);
             root.addProperty("quickButtonInventory", quickButtonInventory);
-            root.addProperty("overlayOpacity", overlayOpacity);
             Files.writeString(path, GSON.toJson(root));
         } catch (IOException e) {
             SandboxesClient.LOGGER.error("[config] failed to write {}, changes won't persist", path, e);
@@ -86,7 +80,5 @@ public final class SandboxesConfig {
     public static void setQuickButton(boolean v) { quickButton = v; save(); }
     public static boolean quickButtonInventory() { return quickButtonInventory; }
     public static void setQuickButtonInventory(boolean v) { quickButtonInventory = v; save(); }
-    public static int overlayOpacity() { return overlayOpacity; }
-    public static void setOverlayOpacity(int v) { overlayOpacity = Math.clamp(v, OPACITY_MIN, OPACITY_MAX); save(); }
 
 }
