@@ -4,6 +4,7 @@ import com.trevorschoeny.sandboxes.SandboxesClient;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import net.minecraft.SharedConstants;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
@@ -43,8 +44,13 @@ final class OtherWorld implements AutoCloseable {
     private final Path root;
     private final ResourceKey<Level> dimension;
     private final Map<Long, RegionFile> regions = new HashMap<>();
-    /** Decoded chunks; a null value means "not in the other world, nothing to compare". */
+    /**
+     * Decoded chunks, while the live world has them loaded ({@link #forget});
+     * a null value means "not in the other world, nothing to compare".
+     */
     private final Long2ObjectOpenHashMap<Map<Integer, Section>> chunks = new Long2ObjectOpenHashMap<>();
+    /** Said once per session, so an empty overlay over an old sandbox has an explanation in the log. */
+    private boolean warnedOldFormat = false;
 
     OtherWorld(Path root, ResourceKey<Level> dimension) {
         this.root = root;
@@ -69,6 +75,11 @@ final class OtherWorld implements AutoCloseable {
         return chunk.getOrDefault(sectionY, AIR);
     }
 
+    /** Drops a decoded chunk the live world has unloaded; it's read again if it comes back. */
+    void forget(int chunkX, int chunkZ) {
+        chunks.remove(ChunkPos.pack(chunkX, chunkZ));
+    }
+
     /** Decodes one chunk's block sections, keyed by section Y. Null when absent or unreadable. */
     private @Nullable Map<Integer, Section> readChunk(ChunkPos pos) {
         try {
@@ -77,6 +88,15 @@ final class OtherWorld implements AutoCloseable {
             try (DataInputStream in = region.getChunkDataInputStream(pos)) {
                 if (in == null) return null;
                 CompoundTag tag = NbtIo.read(in);
+                // Chunks are read raw, with no upgrade step: one saved by an older
+                // Minecraft may name blocks that have since been renamed, and a
+                // chunk with a name we can't read is skipped below (shown as "the same").
+                int saved = tag.getIntOr("DataVersion", 0);
+                if (saved < SharedConstants.WORLD_VERSION && !warnedOldFormat) {
+                    warnedOldFormat = true;
+                    SandboxesClient.LOGGER.warn("[overlay] {} has chunks saved by an older Minecraft (data version {}, now {});"
+                            + " renamed blocks there won't show as differences until it's joined once", root, saved, SharedConstants.WORLD_VERSION);
+                }
                 Map<Integer, Section> out = new HashMap<>();
                 for (Tag entry : tag.getListOrEmpty("sections")) {
                     if (!(entry instanceof CompoundTag sectionTag)) continue;

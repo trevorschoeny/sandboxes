@@ -2,6 +2,7 @@ package com.trevorschoeny.sandboxes.ui;
 
 import com.trevorschoeny.sandboxes.config.SandboxesConfig;
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
+import com.trevorschoeny.sandboxes.sandbox.DiskJobs;
 import com.trevorschoeny.sandboxes.sandbox.WorldSwitch;
 
 import com.trevlar.menukit.api.element.Button;
@@ -77,6 +78,7 @@ public final class QuickButton {
                 .add(Button.builder()
                         .icon(() -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE)
                         .size(SIZE, SIZE)
+                        .disabledWhen(DiskJobs::running)   // no leaving while a copy reads the world
                         .onClick(WorldSwitch::hop)
                         // Says where it goes: "Jump to <sandbox>" or "Back to <world>".
                         .tooltip(() -> {

@@ -5,6 +5,7 @@ import com.trevorschoeny.sandboxes.config.SandboxesConfig;
 import com.trevorschoeny.sandboxes.overlay.Overlay;
 import com.trevorschoeny.sandboxes.overlay.OverlayKeys;
 import com.trevorschoeny.sandboxes.sandbox.CurrentWorld;
+import com.trevorschoeny.sandboxes.sandbox.DiskJobs;
 import com.trevorschoeny.sandboxes.sandbox.Sandbox;
 import com.trevorschoeny.sandboxes.sandbox.SandboxStore;
 import com.trevorschoeny.sandboxes.sandbox.WorldFiles;
@@ -86,10 +87,6 @@ public final class SandboxesScreen extends MKScreen {
     /** The sandbox whose name is being edited, and the text so far. */
     private static @Nullable String editingId = null;
     private static String draftName = "";
-    /** Rows doing disk work right now: sandbox id to what it's doing. */
-    private static final Map<String, Component> BUSY = new ConcurrentHashMap<>();
-    /** A sandbox being copied into existence (create or duplicate), shown as a placeholder row. */
-    private static volatile @Nullable Component copying = null;
     /** Sizes, filled in off-thread; a row shows "…" until its size is known. */
     private static final Map<String, String> SIZES = new ConcurrentHashMap<>();
     /** What the confirmation dialog is asking about, or null when it's closed. */
@@ -190,7 +187,7 @@ public final class SandboxesScreen extends MKScreen {
         List<PanelElement> body = new ArrayList<>();
         if (worldId == null) return body;
         int y = 0;
-        if (sandboxes.isEmpty() && copying == null) {
+        if (sandboxes.isEmpty() && DiskJobs.copying() == null) {
             body.add(TextLabel.builder().text(Component.translatable("sandboxes.screen.empty"))
                     .role(TextRole.MUTED).at(0, y).build());
             y += 20;
@@ -200,13 +197,13 @@ public final class SandboxesScreen extends MKScreen {
             body.add(row(sandbox, y, conflict));
             y += ROW_STEP + (conflict == null ? 0 : LINE_STEP);   // a conflict is one more line in the card
         }
-        Component inProgress = copying;
+        Component inProgress = DiskJobs.copying();
         if (inProgress != null) {
             body.add(TextLabel.builder().text(inProgress).role(TextRole.MUTED).at(0, y + 10).build());
             y += ROW_STEP;
         }
         body.add(Button.builder().label(Component.translatable("sandboxes.compact.new")).size(140, 20)
-                .disabledWhen(() -> copying != null)
+                .disabledWhen(() -> DiskJobs.copying() != null)
                 .onClick(() -> createIn(worldId))
                 .at(0, y + 4).build());
         return body;
@@ -240,11 +237,11 @@ public final class SandboxesScreen extends MKScreen {
         text.add(TextLabel.builder().text(detail(sandbox)).role(TextRole.MUTED).build());
         if (conflict != null) text.add(TextLabel.builder().text(conflict).role(TextRole.MUTED).build());
 
-        Component busy = BUSY.get(sandbox.id());
+        Component busy = DiskJobs.busy(sandbox.id());
         // While it copies, the row says so and offers nothing that would collide.
         text.add(busy != null
                 ? TextLabel.builder().text(busy).role(TextRole.MUTED).build()
-                : buttons(sandbox, editing));
+                : buttons(sandbox, editing, sandbox.levelId().equals(CurrentWorld.levelId())));
 
         return Flow.builder().boxed().at(0, y).gap(6)
                 .add(Icon.builder().texture(() -> worldIcon(sandbox), 64).size(ICON_SIZE, ICON_SIZE).build())
@@ -252,14 +249,22 @@ public final class SandboxesScreen extends MKScreen {
                 .build();
     }
 
-    /** Everything you can do to a sandbox, one click each. */
-    private static PanelElement buttons(Sandbox sandbox, boolean editing) {
+    /**
+     * Everything you can do to a sandbox, one click each. The sandbox you're
+     * standing in (its row shows when Settings is opened from inside it) can't
+     * be joined, synced or deleted: that would pull the world out from under you.
+     */
+    private static PanelElement buttons(Sandbox sandbox, boolean editing, boolean current) {
         Flow.Builder row = Flow.builder().gap(2);
         // Eye open while this sandbox's overlay shows; it appears once the screen closes.
+        // On the sandbox you're in, the eye compares it with your main world instead.
         row.add(Button.builder().size(20, 20)
-                .icon(() -> Overlay.showing(sandbox) ? EYE_OPEN : EYE_CLOSED)
+                .icon(() -> (current ? Overlay.active() : Overlay.showing(sandbox)) ? EYE_OPEN : EYE_CLOSED)
                 .tooltip(Component.translatable("sandboxes.compact.overlay"))
-                .onClick(() -> Overlay.toggleFor(sandbox)).build());
+                .onClick(() -> {
+                    if (current) Overlay.toggleAgainstParent();
+                    else Overlay.toggleFor(sandbox);
+                }).build());
         if (OverlayKeys.available()) {
             row.add(WidgetHost.builder()
                     .widget(() -> {
@@ -271,13 +276,19 @@ public final class SandboxesScreen extends MKScreen {
                     .size(50, 20)
                     .build());
         }
-        row.add(Button.builder().label(Component.translatable("sandboxes.button.join")).size(40, 20)
-                .onClick(() -> WorldSwitch.enterSandbox(sandbox)).build());
-        row.add(Button.builder().label(Component.translatable("sandboxes.button.sync")).size(40, 20)
-                .onClick(() -> {
-                    confirm = new Confirm(sandbox, false);
-                    rebuild();
-                }).build());
+        if (current) {
+            row.add(TextLabel.builder().text(Component.translatable("sandboxes.row.here")).role(TextRole.MUTED).build());
+        } else {
+            // No leaving the world while a copy reads it (see DiskJobs).
+            row.add(Button.builder().label(Component.translatable("sandboxes.button.join")).size(40, 20)
+                    .disabledWhen(DiskJobs::running)
+                    .onClick(() -> WorldSwitch.enterSandbox(sandbox)).build());
+            row.add(Button.builder().label(Component.translatable("sandboxes.button.sync")).size(40, 20)
+                    .onClick(() -> {
+                        confirm = new Confirm(sandbox, false);
+                        rebuild();
+                    }).build());
+        }
         row.add(Button.builder().label(Component.literal(editing ? "✓" : "✎")).size(20, 20)
                 .tooltip(Component.translatable(editing ? "sandboxes.compact.rename.save" : "sandboxes.button.rename"))
                 .onClick(() -> {
@@ -291,9 +302,9 @@ public final class SandboxesScreen extends MKScreen {
                 }).build());
         row.add(Button.builder().label(Component.literal("❐")).size(20, 20)
                 .tooltip(Component.translatable("sandboxes.button.duplicate"))
-                .disabledWhen(() -> copying != null)
-                .onClick(() -> duplicate(sandbox)).build());
-        row.add(Button.builder().label(Component.literal("✕")).size(20, 20)
+                .disabledWhen(() -> DiskJobs.copying() != null)
+                .onClick(() -> duplicate(sandbox, current)).build());
+        if (!current) row.add(Button.builder().label(Component.literal("✕")).size(20, 20)
                 .tooltip(Component.translatable("sandboxes.button.delete"))
                 .onClick(() -> {
                     confirm = new Confirm(sandbox, true);
@@ -402,11 +413,17 @@ public final class SandboxesScreen extends MKScreen {
         confirm = null;
         if (pending == null) return;
         Sandbox sandbox = pending.sandbox();
+        // The overlay may hold this sandbox's region files open, and Windows won't
+        // delete an open file: turn it off and wait until it lets go.
         Overlay.forget(sandbox);
         if (pending.delete()) {
-            onDisk(sandbox.id(), Component.translatable("sandboxes.status.deleting"), () -> SandboxStore.delete(sandbox));
+            onDisk(sandbox.id(), Component.translatable("sandboxes.status.deleting"), () -> {
+                Overlay.awaitIdle();
+                SandboxStore.delete(sandbox);
+            });
         } else {
             onDisk(sandbox.id(), Component.translatable("sandboxes.status.syncing"), () -> {
+                Overlay.awaitIdle();
                 WorldSwitch.saveCurrentWorld();
                 SandboxStore.sync(sandbox);
             });
@@ -420,42 +437,32 @@ public final class SandboxesScreen extends MKScreen {
         });
     }
 
-    private static void duplicate(Sandbox sandbox) {
-        onDisk(null, Component.translatable("sandboxes.status.duplicating"), () -> SandboxStore.duplicate(sandbox));
-    }
-
-    /**
-     * Disk work off the client thread. With a sandbox id, that row shows the
-     * message in place of its buttons; without one, a placeholder row stands
-     * where the new sandbox will appear. The rest of the list stays usable.
-     */
-    private static void onDisk(@Nullable String sandboxId, Component message, DiskWork work) {
-        if (sandboxId != null) BUSY.put(sandboxId, message);
-        else copying = message;
-        rebuild();
-        Thread.ofPlatform().name("sandboxes-io").start(() -> {
-            try {
-                work.run();
-            } catch (Exception e) {
-                SandboxesClient.LOGGER.error("[sandboxes] {} failed", message.getString(), e);
-            } finally {
-                if (sandboxId != null) {
-                    BUSY.remove(sandboxId);
-                    SIZES.remove(sandboxId);
-                } else {
-                    copying = null;
-                }
-                Minecraft.getInstance().execute(() -> {
-                    if (sandboxId != null) forgetIcon(sandboxId);
-                    OverlayKeys.refresh();
-                    rebuild();
-                });
-            }
+    /** {@code running}: the sandbox is the world you're in, so its latest state is still in memory. */
+    private static void duplicate(Sandbox sandbox, boolean running) {
+        onDisk(null, Component.translatable("sandboxes.status.duplicating"), () -> {
+            if (running) WorldSwitch.saveCurrentWorld();   // a copy only sees what's on disk
+            SandboxStore.duplicate(sandbox);
         });
     }
 
-    private interface DiskWork {
-        void run() throws Exception;
+    /**
+     * Disk work off the client thread (see {@link DiskJobs}). With a sandbox id,
+     * that row shows the message in place of its buttons; without one, a
+     * placeholder row stands where the new sandbox will appear.
+     */
+    private static void onDisk(@Nullable String sandboxId, Component message, DiskJobs.Work work) {
+        // A name half-typed on a sandbox about to be recopied would be written into
+        // a folder that's being replaced: drop the edit.
+        if (sandboxId != null && sandboxId.equals(editingId)) editingId = null;
+        DiskJobs.run(sandboxId, message, work, () -> {
+            if (sandboxId != null) {
+                SIZES.remove(sandboxId);
+                forgetIcon(sandboxId);
+            }
+            OverlayKeys.refresh();
+            rebuild();
+        });
+        rebuild();
     }
 
     /** Fills in sizes the rows don't know yet; a world folder can take a moment to walk. */

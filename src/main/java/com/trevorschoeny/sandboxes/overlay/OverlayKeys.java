@@ -21,6 +21,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
@@ -115,7 +116,14 @@ public final class OverlayKeys {
         }
     }
 
+    /**
+     * The binding's id, from the sandbox's folder name. Ours are UUIDs, but a
+     * folder copied by hand ("… copy") can hold a space or capitals, which an
+     * id can't, and a bad id would fail every join of that world; those
+     * characters become underscores.
+     */
     private static Identifier idFor(Sandbox sandbox) {
-        return Identifier.fromNamespaceAndPath("sandboxes", "overlay/" + sandbox.id());
+        String path = sandbox.id().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_");
+        return Identifier.fromNamespaceAndPath("sandboxes", "overlay/" + path);
     }
 }

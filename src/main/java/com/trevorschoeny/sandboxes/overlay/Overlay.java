@@ -28,8 +28,10 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The diff overlay: shows, inside the world you're in, where the other world
@@ -80,6 +82,9 @@ public final class Overlay {
         }
     }
 
+    /** {@link Kind#values()} once: it copies the array on every call, and this is read per block per frame. */
+    static final Kind[] KINDS = Kind.values();
+
     /**
      * One section's differences, in local block indices (y * 256 + z * 16 + x),
      * ascending, with what the other world has at each.
@@ -96,7 +101,7 @@ public final class Overlay {
         if (diff == null) return null;
         int local = ((pos.getY() & 15) << 8) | ((pos.getZ() & 15) << 4) | (pos.getX() & 15);
         int n = Arrays.binarySearch(diff.indices(), (short) local);
-        return n < 0 ? null : new Difference(Kind.values()[diff.kinds()[n]], diff.theirs()[n]);
+        return n < 0 ? null : new Difference(KINDS[diff.kinds()[n]], diff.theirs()[n]);
     }
 
     /**
@@ -108,6 +113,12 @@ public final class Overlay {
 
     /** Per-tick budget for handing sections to the worker, so turning on never hitches. */
     private static final long TICK_BUDGET_NANOS = 2_000_000L;
+    /**
+     * Most sections handed over and not yet compared. Each holds a copy of its
+     * section, so at a high render distance a worker that falls behind would
+     * otherwise pile up copies; the rest wait in PENDING as positions.
+     */
+    private static final int MAX_IN_FLIGHT = 2000;
 
     /** Results the renderer draws. Written by the worker, read by the render thread. */
     static final Map<Long, SectionDiff> DIFFS = new ConcurrentHashMap<>();
@@ -118,8 +129,19 @@ public final class Overlay {
 
     /** Bumped on every reset, so the worker can drop results from a previous session. */
     private static volatile int generation = 0;
-    private static @Nullable ExecutorService worker = null;
-    /** Owned by the worker thread only. */
+    /**
+     * One worker for the whole game, never shut down: every task, from every
+     * session, runs on it in order. So a session's close always finishes before
+     * the next one opens, and {@link #awaitIdle()} means "everything before now
+     * is done".
+     */
+    private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "sandboxes-overlay");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final AtomicInteger IN_FLIGHT = new AtomicInteger();
+    /** Read and written on the worker thread only. */
     private static @Nullable OtherWorld other = null;
 
     public static void install() {
@@ -163,9 +185,38 @@ public final class Overlay {
         return current != null && sandbox.id().equals(current.sandboxId());
     }
 
-    /** A sandbox about to be synced or deleted can't stay on screen. */
+    /**
+     * A sandbox about to be synced or deleted can't stay on screen. Before
+     * touching its files, the disk work then calls {@link #awaitIdle()}, so the
+     * region files are closed (Windows won't delete an open file).
+     */
     public static void forget(Sandbox sandbox) {
         if (showing(sandbox)) off();
+    }
+
+    /**
+     * Blocks until the worker has done everything queued before this call,
+     * including closing the last session's files. Call off the client thread.
+     */
+    public static void awaitIdle() {
+        try {
+            WORKER.submit(() -> {}).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException e) {
+            SandboxesClient.LOGGER.warn("[overlay] waiting for the worker failed", e);
+        }
+    }
+
+    /** Runs a task on the worker, logging anything it throws (a corrupt region file, say) instead of losing it. */
+    private static void work(Runnable task) {
+        WORKER.execute(() -> {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                SandboxesClient.LOGGER.error("[overlay] background work failed", e);
+            }
+        });
     }
 
     public static boolean active() {
@@ -201,22 +252,11 @@ public final class Overlay {
 
         Target current = target;
         if (current == null || newLevel == null) {
-            if (worker != null) {
-                worker.submit(Overlay::closeOther);
-                worker.shutdown();
-                worker = null;
-            }
+            work(Overlay::closeOther);
             return;
         }
-        if (worker == null) {
-            worker = Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "sandboxes-overlay");
-                thread.setDaemon(true);
-                return thread;
-            });
-        }
         var dimension = newLevel.dimension();
-        worker.submit(() -> {
+        work(() -> {
             closeOther();
             other = new OtherWorld(current.otherRoot(), dimension);
         });
@@ -261,6 +301,10 @@ public final class Overlay {
 
     private static void dropChunk(ChunkPos pos) {
         DIFFS.values().removeIf(d -> d.sectionX() == pos.x() && d.sectionZ() == pos.z());
+        // The other world's copy of the chunk goes too, so a long flight doesn't keep every chunk it passed.
+        work(() -> {
+            if (other != null) other.forget(pos.x(), pos.z());
+        });
     }
 
     /** A block changed in the live world: re-check its section, and nothing else. */
@@ -287,12 +331,11 @@ public final class Overlay {
             reset(mc.level);   // changed dimension
             return;
         }
-        ExecutorService exec = worker;
-        if (exec == null || PENDING.isEmpty()) return;
+        if (PENDING.isEmpty()) return;
 
         long deadline = System.nanoTime() + TICK_BUDGET_NANOS;
         int gen = generation;
-        while (!PENDING.isEmpty() && System.nanoTime() < deadline) {
+        while (!PENDING.isEmpty() && System.nanoTime() < deadline && IN_FLIGHT.get() < MAX_IN_FLIGHT) {
             long sectionPos = PENDING.removeFirstLong();
             int sx = SectionPos.x(sectionPos), sy = SectionPos.y(sectionPos), sz = SectionPos.z(sectionPos);
             LevelChunk chunk = level.getChunkSource().getChunk(sx, sz, ChunkStatus.FULL, false);
@@ -301,7 +344,14 @@ public final class Overlay {
             if (index < 0 || index >= chunk.getSections().length) continue;
             LevelChunkSection section = chunk.getSections()[index];
             PalettedContainer<BlockState> live = section.getStates().copy();
-            exec.submit(() -> compare(gen, sectionPos, sx, sy, sz, live));
+            IN_FLIGHT.incrementAndGet();
+            work(() -> {
+                try {
+                    compare(gen, sectionPos, sx, sy, sz, live);
+                } finally {
+                    IN_FLIGHT.decrementAndGet();
+                }
+            });
         }
     }
 
@@ -312,7 +362,7 @@ public final class Overlay {
         if (gen != generation || other == null) return;
         OtherWorld.Section there = other.section(sx, sy, sz);
         if (there == null) {
-            DIFFS.remove(sectionPos);   // nothing to compare against: treat as the same
+            retract(gen, sectionPos);   // nothing to compare against: treat as the same
             return;
         }
 
@@ -320,7 +370,7 @@ public final class Overlay {
         if (there.data() == null) {
             var only = there.palette()[0].getBlock();
             if (!live.maybeHas(state -> state.getBlock() != only)) {
-                DIFFS.remove(sectionPos);
+                retract(gen, sectionPos);
                 return;
             }
         }
@@ -343,7 +393,7 @@ public final class Overlay {
         }
         if (gen != generation) return;
         if (count == 0) {
-            DIFFS.remove(sectionPos);
+            retract(gen, sectionPos);
             return;
         }
 
@@ -360,8 +410,19 @@ public final class Overlay {
             theirs[n] = theirsAt[i];
             n++;
         }
-        DIFFS.put(sectionPos, new SectionDiff(sx, sy, sz, indices, kinds, faces, theirs));
+        SectionDiff diff = new SectionDiff(sx, sy, sz, indices, kinds, faces, theirs);
+        DIFFS.put(sectionPos, diff);
+        // A reset can land between the generation check above and this put: the
+        // client bumps the generation and then clears, so a put that slipped in
+        // after the clear sees the new generation here and takes itself back out.
+        if (gen != generation) DIFFS.remove(sectionPos, diff);
     }
+
+    /** The worlds agree in this section now. Only for the current session: an old one's answer means nothing. */
+    private static void retract(int gen, long sectionPos) {
+        if (gen == generation) DIFFS.remove(sectionPos);
+    }
+
 
     /**
      * Which of a block's six faces to draw. A face is hidden behind a neighbour of

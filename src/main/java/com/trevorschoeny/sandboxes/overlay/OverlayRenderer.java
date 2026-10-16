@@ -110,7 +110,7 @@ public final class OverlayRenderer {
             if (Math.abs(originX + 8 - camera.x) > maxDistance || Math.abs(originZ + 8 - camera.z) > maxDistance) continue;
             for (int n = 0; n < diff.indices().length; n++) {
                 int i = diff.indices()[n];
-                Overlay.Kind kind = Overlay.Kind.values()[diff.kinds()[n]];
+                Overlay.Kind kind = Overlay.KINDS[diff.kinds()[n]];
                 pos.set(originX + (i & 15), originY + (i >> 8), originZ + ((i >> 4) & 15));
                 BlockState shown = kind == Overlay.Kind.ADDED ? diff.theirs()[n] : level.getBlockState(pos);
                 visit.visit(diff, n, kind, pos, shown);

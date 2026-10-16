@@ -19,7 +19,8 @@ public final class WorldSwitch {
     private WorldSwitch() {}
 
     /**
-     * Saves and closes the current world, then opens {@code levelId}.
+     * Saves and closes the current world, then opens {@code levelId}. Does
+     * nothing while a copy, sync or delete is running ({@link DiskJobs}).
      *
      * <p>Vanilla's own disconnect is what waits for the integrated server to
      * finish and release the world's lock, so the world being opened can take
@@ -27,6 +28,11 @@ public final class WorldSwitch {
      */
     public static void openLevel(String levelId) {
         Minecraft mc = Minecraft.getInstance();
+        if (DiskJobs.running()) {
+            // Closing the world now would save it under a copy that's still reading it.
+            SandboxesClient.LOGGER.info("[sandboxes] not switching to {} while a copy is running", levelId);
+            return;
+        }
         SandboxesClient.LOGGER.info("[sandboxes] switching to {}", levelId);
 
         mc.disconnect(new GenericMessageScreen(Component.translatable("menu.savingLevel")), false);
@@ -51,6 +57,7 @@ public final class WorldSwitch {
      * inside it, not where they are standing in the main world.
      */
     public static void enterSandbox(Sandbox sandbox) {
+        if (DiskJobs.running()) return;   // see openLevel
         SandboxStore.markJoined(sandbox);
         openLevel(sandbox.levelId());
     }

@@ -22,6 +22,7 @@ public abstract class ClientLevelMixin {
     @Inject(method = "sendBlockUpdated", at = @At("HEAD"))
     private void sandboxes$recheckOverlay(BlockPos pos, BlockState oldState, BlockState newState,
                                           int flags, CallbackInfo ci) {
-        if (oldState != newState) Overlay.onBlockChanged(pos);
+        // The overlay compares blocks, not states: a crop growing or a wire powering isn't a change.
+        if (oldState.getBlock() != newState.getBlock()) Overlay.onBlockChanged(pos);
     }
 }
