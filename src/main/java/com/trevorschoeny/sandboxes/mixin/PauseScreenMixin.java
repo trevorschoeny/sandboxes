@@ -74,7 +74,7 @@ public abstract class PauseScreenMixin extends Screen {
             press = b -> minecraft.gui.setScreen(SandboxesScreen.forWorld(self, levelId));
         }
         SpriteIconButton ours = SpriteIconButton.builder(label, press, true)
-                .width(20).sprite(SPRITE, 15, 15).withTootip().build();
+                .width(20).sprite(SPRITE, 14, 15).withTootip().build();
         // Leaving closes the world and saves it again under a copy that's still
         // reading it, so no way out while one runs. DiskJobs re-lays this menu out
         // when the copy finishes, which turns it back on.
