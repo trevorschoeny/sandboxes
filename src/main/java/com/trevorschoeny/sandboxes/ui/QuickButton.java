@@ -38,9 +38,14 @@ public final class QuickButton {
 
     private QuickButton() {}
 
-    /** A blue pail with a spade, unlike the red pail in the pause menu's icon row, which opens the list. */
+    /**
+     * Blue pails, unlike the red one in the pause menu's icon row, which opens
+     * the list: with a spade to jump into a sandbox, without one to go back.
+     */
     private static final Identifier SPRITE =
             Identifier.fromNamespaceAndPath("sandboxes", "quick");
+    private static final Identifier BACK_SPRITE =
+            Identifier.fromNamespaceAndPath("sandboxes", "quick_back");
 
     private static final int SIZE = 20;
 
@@ -76,7 +81,7 @@ public final class QuickButton {
                 .style(PanelStyle.NONE)
                 .position(position)
                 .add(Button.builder()
-                        .icon(SPRITE)
+                        .icon(() -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE)
                         .size(SIZE, SIZE)
                         .disabledWhen(DiskJobs::running)   // no leaving while a copy reads the world
                         .onClick(WorldSwitch::hop)
