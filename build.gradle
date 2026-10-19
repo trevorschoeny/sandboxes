@@ -71,6 +71,18 @@ loom {
     }
 }
 
+// Self-checks: Fabric client gametests in src/gametest, run with `./gradlew :sandboxes:runClientGameTest`.
+// The run opens its own window, runs every check, and closes; it never touches run/ or a scene client.
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = 'sandboxes_checks'
+        enableGameTests = false
+        enableClientGameTests = true
+        eula = true
+    }
+}
+
 jar {
     from('LICENSE') { rename { "${it}_${project.name}" } }
 }

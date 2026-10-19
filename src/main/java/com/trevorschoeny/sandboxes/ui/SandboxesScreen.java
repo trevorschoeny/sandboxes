@@ -16,13 +16,16 @@ import com.trevlar.menukit.api.dialog.ConfirmDialog;
 import com.trevlar.menukit.api.element.Button;
 import com.trevlar.menukit.api.element.Flow;
 import com.trevlar.menukit.api.element.Icon;
+import com.trevlar.menukit.api.element.ListView;
 import com.trevlar.menukit.api.element.PanelElement;
+import com.trevlar.menukit.api.element.ScrollContainer;
 import com.trevlar.menukit.api.element.Tabs;
 import com.trevlar.menukit.api.element.TextField;
 import com.trevlar.menukit.api.element.TextLabel;
 import com.trevlar.menukit.api.element.TextRole;
 import com.trevlar.menukit.api.element.Toggle;
 import com.trevlar.menukit.api.element.WidgetHost;
+import com.trevlar.menukit.api.layout.CrossAlign;
 import com.trevlar.menukit.api.panel.MKScreen;
 import com.trevlar.menukit.api.panel.OutsideRegion;
 import com.trevlar.menukit.api.panel.Panel;
@@ -51,7 +54,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,18 +70,23 @@ import java.util.function.Consumer;
  * with no world (from Mod Menu on the title screen) only Settings shows, since
  * sandboxes exist inside their world.
  *
- * <p>MenuKit freezes a panel's elements once built, so any change to the rows
- * (a sandbox made, renamed, synced, deleted) rebuilds the screen, keeping the
- * tab and scroll. A MenuKit list that can change while open would make the
- * rebuild unnecessary.
+ * <p>The cards are a MenuKit {@code ListView} keyed by sandbox id. Each card is
+ * built once and reads what can change (name, size, key warning, busy line) by
+ * id, so a sandbox made, renamed, synced or deleted adds, changes or removes its
+ * card in place and the screen is never rebuilt.
  */
 public final class SandboxesScreen extends MKScreen {
 
     private static final DateTimeFormatter JOINED_FORMAT = DateTimeFormatter.ofPattern("MMM d");
 
-    // Screen state, kept across rebuilds (and across opens, which is fine: one screen at a time).
+    // Screen state, static because there's one screen at a time.
     private static String tab = "sandboxes";
     private static final Map<String, Double> SCROLL = new HashMap<>();
+    /** The world listed, and its sandboxes as last read from disk (newest joined first). */
+    private static @Nullable String listedWorld = null;
+    private static List<Sandbox> listed = List.of();
+    /** Each sandbox's key warning, worked out with the list rather than every frame. */
+    private static final Map<String, Component> CONFLICTS = new HashMap<>();
     /** The sandbox whose name is being edited, and the text so far. */
     private static @Nullable String editingId = null;
     private static String draftName = "";
@@ -92,24 +99,14 @@ public final class SandboxesScreen extends MKScreen {
 
     private record Confirm(Sandbox sandbox, boolean delete) {}
 
-    private final Screen parent;
-    private final @Nullable String worldId;
-
     /**
      * @param worldId the world whose sandboxes to list, or null when there's no
      *                world (only the Settings tab shows)
      */
     public SandboxesScreen(Screen parent, @Nullable String worldId, String openTab) {
-        this(parent, worldId, openTab, worldId == null ? List.of() : SandboxStore.list(worldId));
-    }
-
-    private SandboxesScreen(Screen parent, @Nullable String worldId, String openTab, List<Sandbox> sandboxes) {
-        super(Component.translatable("sandboxes.compact.title"), ScreenKind.OPTIONS,
-                panels(parent, worldId, openTab, sandboxes));
-        this.parent = parent;
-        this.worldId = worldId;
+        super(Component.translatable("sandboxes.compact.title"), ScreenKind.DEFAULT,
+                panels(parent, worldId, openTab));
         setReturnAction(() -> Minecraft.getInstance().gui.setScreen(parent));
-        measureSizes(sandboxes);
     }
 
     /** A world's sandbox list. */
@@ -122,17 +119,35 @@ public final class SandboxesScreen extends MKScreen {
         return new SandboxesScreen(parent, CurrentWorld.hostWorldId(), "settings");
     }
 
-    /** Rebuilds this screen in place, for after anything changed the rows. */
-    private static void rebuild() {
-        Minecraft mc = Minecraft.getInstance();
-        if (!(mc.gui.screen() instanceof SandboxesScreen current)) return;
-        mc.gui.setScreen(new SandboxesScreen(current.parent, current.worldId, tab));
+    /**
+     * Reads the world's sandboxes from disk again, for after anything changed
+     * them. The list reads {@link #listed} every frame, so this is all a change
+     * takes: cards come, go and update on the next frame.
+     */
+    private static void reload() {
+        listed = listedWorld == null ? List.of() : SandboxStore.list(listedWorld);
+        CONFLICTS.clear();
+        for (Sandbox sandbox : listed) {
+            Component conflict = conflictLine(sandbox);
+            if (conflict != null) CONFLICTS.put(sandbox.id(), conflict);
+        }
+        measureSizes(listed);
+    }
+
+    /** The sandbox with this id as last read, or null once it's gone (its card is about to go too). */
+    private static @Nullable Sandbox find(String id) {
+        for (Sandbox sandbox : listed) if (sandbox.id().equals(id)) return sandbox;
+        return null;
     }
 
     // Panels
 
-    private static List<Panel> panels(Screen parent, @Nullable String worldId, String openTab, List<Sandbox> sandboxes) {
+    private static List<Panel> panels(Screen parent, @Nullable String worldId, String openTab) {
         tab = worldId == null ? "settings" : openTab;
+        listedWorld = worldId;
+        editingId = null;
+        confirm = null;
+        reload();
 
         Tabs tabs = Tabs.builder()
                 .mode(Tabs.Mode.SIDE_SCROLL)
@@ -141,7 +156,7 @@ public final class SandboxesScreen extends MKScreen {
                 .tab(Tabs.tab("sandboxes")
                         .label(Component.translatable("sandboxes.compact.tab.sandboxes"))
                         .visibleWhen(() -> worldId != null)
-                        .body(() -> sandboxesBody(worldId, sandboxes)))
+                        .body(() -> sandboxesBody(worldId)))
                 .tab(Tabs.tab("settings")
                         .label(Component.translatable("sandboxes.compact.tab.settings"))
                         .body(SandboxesScreen::settingsBody))
@@ -161,16 +176,14 @@ public final class SandboxesScreen extends MKScreen {
                 .add(done)
                 .build();
 
+        // Built once; its text is read when it shows, so it names whichever sandbox asked.
         Panel dialog = ConfirmDialog.builder()
-                .title(Component.translatable(confirm != null && confirm.delete()
+                .title(() -> Component.translatable(confirm != null && confirm.delete()
                         ? "sandboxes.confirm.delete.title" : "sandboxes.confirm.sync.title"))
-                .body(confirm == null ? Component.empty() : Component.translatable(confirm.delete()
+                .body(() -> confirm == null ? Component.empty() : Component.translatable(confirm.delete()
                         ? "sandboxes.confirm.delete.body" : "sandboxes.confirm.sync.body", confirm.sandbox().name()))
                 .onConfirm(SandboxesScreen::confirmed)
-                .onCancel(() -> {
-                    confirm = null;
-                    rebuild();
-                })
+                .onCancel(() -> confirm = null)
                 .build()
                 .visibleWhen(() -> confirm != null);
 
@@ -179,92 +192,106 @@ public final class SandboxesScreen extends MKScreen {
 
     // The Sandboxes tab
 
-    private static List<PanelElement> sandboxesBody(@Nullable String worldId, List<Sandbox> sandboxes) {
-        List<PanelElement> body = new ArrayList<>();
-        if (worldId == null) return body;
-        int y = 0;
-        if (sandboxes.isEmpty() && DiskJobs.copying() == null) {
-            body.add(TextLabel.builder().text(Component.translatable("sandboxes.screen.empty"))
-                    .role(TextRole.MUTED).at(0, y).build());
-            y += 20;
-        }
-        for (Sandbox sandbox : sandboxes) {
-            Component conflict = conflictLine(sandbox);
-            body.add(row(sandbox, y, conflict));
-            y += ROW_STEP + (conflict == null ? 0 : LINE_STEP);   // a conflict is one more line in the card
-        }
-        Component inProgress = DiskJobs.copying();
-        if (inProgress != null) {
-            body.add(TextLabel.builder().text(inProgress).role(TextRole.MUTED).at(0, y + 10).build());
-            y += ROW_STEP;
-        }
-        body.add(Button.builder().label(Component.translatable("sandboxes.compact.new")).size(140, 20)
-                .disabledWhen(() -> DiskJobs.copying() != null)
-                .onClick(() -> createIn(worldId))
-                .at(0, y + 4).build());
-        return body;
+    /** "+ New sandbox" and what's being copied, fixed above the cards, which scroll on their own. */
+    private static List<PanelElement> sandboxesBody(@Nullable String worldId) {
+        if (worldId == null) return List.of();
+        ListView<Sandbox> cards = ListView.<Sandbox>builder()
+                .items(() -> listed)
+                .key(Sandbox::id)
+                .row(sandbox -> card(sandbox.id(), sandbox.levelId().equals(CurrentWorld.levelId())))
+                .gap(4)
+                .empty(TextLabel.builder().text(Component.translatable("sandboxes.screen.empty"))
+                        .role(TextRole.MUTED).build())
+                .build();
+        Component none = Component.empty();
+        return List.of(Flow.builder().vertical().gap(6)
+                .add(Flow.builder().gap(8).crossAlign(CrossAlign.CENTER)
+                        .add(Button.builder().label(Component.translatable("sandboxes.compact.new")).size(140, 20)
+                                .disabledWhen(() -> DiskJobs.copying() != null)
+                                .onClick(() -> createIn(worldId)).build())
+                        .add(TextLabel.builder().role(TextRole.MUTED)
+                                .text(() -> { Component c = DiskJobs.copying(); return c == null ? none : c; })
+                                .build())
+                        .build())
+                .add(ScrollContainer.builder().fitWidth().fillHeight().content(List.of(cards)).build())
+                .build());
     }
 
-    /** A card (6 px padding around name, grey line and buttons), plus the gap to the next. */
-    private static final int ROW_STEP = 58;
-    /** One more line of text in a card: the font's 9 px and the stack's 2 px gap. */
-    private static final int LINE_STEP = 11;
     /** The world image left of the title: vanilla's world list draws 32, this a little smaller. */
     private static final int ICON_SIZE = 28;
 
+    private static final Identifier UNKNOWN_WORLD = Identifier.withDefaultNamespace("textures/misc/unknown_server.png");
     private static final Identifier EYE_OPEN = Identifier.fromNamespaceAndPath("sandboxes", "eye_open");
     private static final Identifier EYE_CLOSED = Identifier.fromNamespaceAndPath("sandboxes", "eye_closed");
 
     /**
-     * One sandbox: its world image, then a stack of the name, a grey line of
-     * when and how big, and every button for it.
+     * One sandbox: its world image, then a stack of the name (or the rename
+     * field), a grey line of when and how big, the key warning if any, and every
+     * button for it, or what's being done to it while that runs.
+     *
+     * <p>Built once per sandbox id; every line reads the sandbox by id, and lines
+     * that come and go hide, which moves the cards below.
+     *
+     * @param current the sandbox is the world you're in
      */
-    private static PanelElement row(Sandbox sandbox, int y, @Nullable Component conflict) {
-        Flow.Builder text = Flow.builder().vertical().gap(2);
-        boolean editing = sandbox.id().equals(editingId);
-        if (editing) {
-            text.add(TextField.builder().size(140, 20).maxLength(64)
-                    .state(() -> draftName, name -> draftName = name)
-                    .onSubmit(name -> finishRename(sandbox))
-                    .build());
-        } else {
-            text.add(TextLabel.builder().text(Component.literal(sandbox.name())).build());
-        }
-        text.add(TextLabel.builder().text(detail(sandbox)).role(TextRole.MUTED).build());
-        if (conflict != null) text.add(TextLabel.builder().text(conflict).role(TextRole.MUTED).build());
-
-        Component busy = DiskJobs.busy(sandbox.id());
-        // While it copies, the row says so and offers nothing that would collide.
-        text.add(busy != null
-                ? TextLabel.builder().text(busy).role(TextRole.MUTED).build()
-                : buttons(sandbox, editing, sandbox.levelId().equals(CurrentWorld.levelId())));
-
-        return Flow.builder().boxed().at(0, y).gap(6)
-                .add(Icon.builder().texture(() -> worldIcon(sandbox), 64).size(ICON_SIZE, ICON_SIZE).build())
-                .add(text.build())
+    private static PanelElement card(String id, boolean current) {
+        TextField rename = TextField.builder().size(140, 20).maxLength(64)
+                .state(() -> draftName, name -> draftName = name)
+                .onSubmit(name -> finishRename(id))
+                .onCancel(() -> editingId = null)   // Escape keeps the old name
+                .visibleWhen(() -> id.equals(editingId))
                 .build();
+        Flow text = Flow.builder().vertical().gap(2)
+                .add(TextLabel.builder().text(() -> Component.literal(name(id)))
+                        .visibleWhen(() -> !id.equals(editingId)).build())
+                .add(rename)
+                .add(TextLabel.builder().text(() -> detail(id)).role(TextRole.MUTED).build())
+                .add(TextLabel.builder().text(() -> CONFLICTS.getOrDefault(id, Component.empty()))
+                        .role(TextRole.MUTED).visibleWhen(() -> CONFLICTS.containsKey(id)).build())
+                // While it copies, the card says so and offers nothing that would collide.
+                .add(TextLabel.builder().text(() -> { Component b = DiskJobs.busy(id); return b == null ? Component.empty() : b; })
+                        .role(TextRole.MUTED).visibleWhen(() -> DiskJobs.busy(id) != null).build())
+                .add(buttons(id, current, rename))
+                .build();
+
+        return Flow.builder().boxed().gap(6)
+                .add(Icon.builder().texture(() -> worldIcon(id), 64).size(ICON_SIZE, ICON_SIZE).build())
+                .add(text)
+                .build();
+    }
+
+    private static String name(String id) {
+        Sandbox sandbox = find(id);
+        return sandbox == null ? "" : sandbox.name();
     }
 
     /**
      * Everything you can do to a sandbox, one click each. The sandbox you're
-     * standing in (its row shows when Settings is opened from inside it) can't
+     * standing in (its card shows when Settings is opened from inside it) can't
      * be joined, synced or deleted: that would pull the world out from under you.
      */
-    private static PanelElement buttons(Sandbox sandbox, boolean editing, boolean current) {
+    private static PanelElement buttons(String id, boolean current, TextField rename) {
         Flow.Builder row = Flow.builder().gap(2);
         // Eye open while this sandbox's overlay shows; it appears once the screen closes.
         // On the sandbox you're in, the eye compares it with your main world instead.
         row.add(Button.builder().size(20, 20)
-                .icon(() -> (current ? Overlay.active() : Overlay.showing(sandbox)) ? EYE_OPEN : EYE_CLOSED)
+                .icon(() -> {
+                    Sandbox sandbox = find(id);
+                    boolean on = current ? Overlay.active() : sandbox != null && Overlay.showing(sandbox);
+                    return on ? EYE_OPEN : EYE_CLOSED;
+                })
                 .tooltip(Component.translatable("sandboxes.compact.overlay"))
                 .onClick(() -> {
+                    Sandbox sandbox = find(id);
                     if (current) Overlay.toggleAgainstParent();
-                    else Overlay.toggleFor(sandbox);
+                    else if (sandbox != null) Overlay.toggleFor(sandbox);
                 }).build());
         if (OverlayKeys.available()) {
             row.add(WidgetHost.builder()
                     .widget(() -> {
-                        AbstractWidget key = OverlayKeys.button(0, 0, 50, 20, sandbox, chord -> setKey(sandbox, chord));
+                        Sandbox sandbox = find(id);
+                        if (sandbox == null) return null;
+                        AbstractWidget key = OverlayKeys.button(0, 0, 50, 20, sandbox, chord -> setKey(id, chord));
                         if (key != null) key.setTooltip(Tooltip.create(
                                 Component.translatable("sandboxes.button.overlay_key.tooltip")));
                         return key;
@@ -278,35 +305,36 @@ public final class SandboxesScreen extends MKScreen {
             // No leaving the world while a copy reads it (see DiskJobs).
             row.add(Button.builder().label(Component.translatable("sandboxes.button.join")).size(40, 20)
                     .disabledWhen(DiskJobs::running)
-                    .onClick(() -> WorldSwitch.enterSandbox(sandbox)).build());
+                    .onClick(() -> { Sandbox s = find(id); if (s != null) WorldSwitch.enterSandbox(s); }).build());
             row.add(Button.builder().label(Component.translatable("sandboxes.button.sync")).size(40, 20)
-                    .onClick(() -> {
-                        confirm = new Confirm(sandbox, false);
-                        rebuild();
-                    }).build());
+                    .onClick(() -> ask(id, false)).build());
         }
-        row.add(Button.builder().label(Component.literal(editing ? "✓" : "✎")).size(20, 20)
-                .tooltip(Component.translatable(editing ? "sandboxes.compact.rename.save" : "sandboxes.button.rename"))
+        row.add(Button.builder().label(Component.literal("✎")).size(20, 20)
+                .tooltip(Component.translatable("sandboxes.button.rename"))
+                .visibleWhen(() -> !id.equals(editingId))
                 .onClick(() -> {
-                    if (editing) {
-                        finishRename(sandbox);
-                    } else {
-                        editingId = sandbox.id();
-                        draftName = sandbox.name();
-                        rebuild();
-                    }
+                    editingId = id;
+                    draftName = name(id);
+                    rename.focus();
                 }).build());
+        row.add(Button.builder().label(Component.literal("✓")).size(20, 20)
+                .tooltip(Component.translatable("sandboxes.compact.rename.save"))
+                .visibleWhen(() -> id.equals(editingId))
+                .onClick(() -> finishRename(id)).build());
         row.add(Button.builder().label(Component.literal("❐")).size(20, 20)
                 .tooltip(Component.translatable("sandboxes.button.duplicate"))
                 .disabledWhen(() -> DiskJobs.copying() != null)
-                .onClick(() -> duplicate(sandbox, current)).build());
+                .onClick(() -> { Sandbox s = find(id); if (s != null) duplicate(s, current); }).build());
         if (!current) row.add(Button.builder().label(Component.literal("✕")).size(20, 20)
                 .tooltip(Component.translatable("sandboxes.button.delete"))
-                .onClick(() -> {
-                    confirm = new Confirm(sandbox, true);
-                    rebuild();
-                }).build());
-        return row.build();
+                .onClick(() -> ask(id, true)).build());
+        return row.visibleWhen(() -> DiskJobs.busy(id) == null).build();
+    }
+
+    /** Opens the confirmation for syncing or deleting this sandbox. */
+    private static void ask(String id, boolean delete) {
+        Sandbox sandbox = find(id);
+        if (sandbox != null) confirm = new Confirm(sandbox, delete);
     }
 
     /**
@@ -317,8 +345,10 @@ public final class SandboxesScreen extends MKScreen {
      * delete, whose icon changes). Close them with the screen if a world ever has
      * hundreds of sandboxes.
      */
-    private static Identifier worldIcon(Sandbox sandbox) {
-        return ICONS.computeIfAbsent(sandbox.id(), id -> {
+    private static Identifier worldIcon(String sandboxId) {
+        Sandbox sandbox = find(sandboxId);
+        if (sandbox == null) return UNKNOWN_WORLD;   // its card goes this frame
+        return ICONS.computeIfAbsent(sandboxId, id -> {
             FaviconTexture texture = FaviconTexture.forWorld(Minecraft.getInstance().getTextureManager(), sandbox.levelId());
             Path file = sandbox.dir().resolve("icon.png");
             if (Files.isRegularFile(file)) {
@@ -347,7 +377,9 @@ public final class SandboxesScreen extends MKScreen {
     }
 
     /** "Oct 14 · 412 MB", or "never joined · 412 MB". */
-    private static Component detail(Sandbox sandbox) {
+    private static Component detail(String id) {
+        Sandbox sandbox = find(id);
+        if (sandbox == null) return Component.empty();
         String size = SIZES.getOrDefault(sandbox.id(), "…");
         if (sandbox.lastJoined() == 0L) return Component.translatable("sandboxes.row.never", size);
         String when = LocalDateTime.ofInstant(Instant.ofEpochMilli(sandbox.lastJoined()), ZoneId.systemDefault())
@@ -358,7 +390,7 @@ public final class SandboxesScreen extends MKScreen {
     // The Settings tab
 
     private static List<PanelElement> settingsBody() {
-        List<PanelElement> body = new ArrayList<>();
+        List<PanelElement> body = new java.util.ArrayList<>();
         body.addAll(setting("sandboxes.settings.quick", SandboxesConfig::quickButton, SandboxesConfig::setQuickButton, 0));
         body.addAll(setting("sandboxes.settings.quick_inventory",
                 SandboxesConfig::quickButtonInventory, SandboxesConfig::setQuickButtonInventory, 48));
@@ -378,22 +410,25 @@ public final class SandboxesScreen extends MKScreen {
 
     // Actions
 
-    private static void finishRename(Sandbox sandbox) {
+    private static void finishRename(String id) {
         String name = draftName.trim();
         editingId = null;
+        Sandbox sandbox = find(id);
         // An empty name would leave a row with nothing to read; keep the old one.
-        if (!name.isEmpty() && !name.equals(sandbox.name())) {
+        if (sandbox != null && !name.isEmpty() && !name.equals(sandbox.name())) {
             try {
                 SandboxStore.rename(sandbox, name);
                 OverlayKeys.refresh();   // the key's label names the sandbox
             } catch (IOException e) {
                 SandboxesClient.LOGGER.error("[sandboxes] couldn't rename {}", sandbox.id(), e);
             }
+            reload();
         }
-        rebuild();
     }
 
-    private static void setKey(Sandbox sandbox, Chord chord) {
+    private static void setKey(String id, Chord chord) {
+        Sandbox sandbox = find(id);
+        if (sandbox == null) return;
         try {
             SandboxStore.setOverlayKey(sandbox, chord.serialize());
         } catch (IOException e) {
@@ -401,7 +436,7 @@ public final class SandboxesScreen extends MKScreen {
             return;
         }
         OverlayKeys.refresh();
-        rebuild();
+        reload();
     }
 
     private static void confirmed() {
@@ -443,8 +478,8 @@ public final class SandboxesScreen extends MKScreen {
 
     /**
      * Disk work off the client thread (see {@link DiskJobs}). With a sandbox id,
-     * that row shows the message in place of its buttons; without one, a
-     * placeholder row stands where the new sandbox will appear.
+     * that card shows the message in place of its buttons; without one, the
+     * message shows beside "+ New sandbox". When it's done the list is read again.
      */
     private static void onDisk(@Nullable String sandboxId, Component message, DiskJobs.Work work) {
         // A name half-typed on a sandbox about to be recopied would be written into
@@ -456,9 +491,8 @@ public final class SandboxesScreen extends MKScreen {
                 forgetIcon(sandboxId);
             }
             OverlayKeys.refresh();
-            rebuild();
+            reload();
         });
-        rebuild();
     }
 
     /** Fills in sizes the rows don't know yet; a world folder can take a moment to walk. */
@@ -466,8 +500,8 @@ public final class SandboxesScreen extends MKScreen {
         List<Sandbox> unknown = sandboxes.stream().filter(s -> !SIZES.containsKey(s.id())).toList();
         if (unknown.isEmpty()) return;
         Thread.ofPlatform().name("sandboxes-sizes").start(() -> {
+            // The cards read SIZES every frame, so each size shows as soon as it's in.
             for (Sandbox sandbox : unknown) SIZES.put(sandbox.id(), humanSize(WorldFiles.sizeOf(sandbox.dir())));
-            Minecraft.getInstance().execute(SandboxesScreen::rebuild);
         });
     }
 
