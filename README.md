@@ -36,7 +36,7 @@ It's client-side, and it works with your singleplayer worlds.
 
 ## Requirements
 
-- [MenuKit](https://modrinth.com/mod/menukit) 7.2.0 or newer, below 8.0.0. Sandboxes uses it for its screen, its buttons, and the text at the top of the screen.
+- [MenuKit](https://modrinth.com/mod/menukit) 7.3.0 or newer, below 8.0.0. Sandboxes uses it for its screen, its buttons, and the text at the top of the screen.
 - [Fabric API](https://modrinth.com/mod/fabric-api).
 
 ## Pairs well with
@@ -52,8 +52,8 @@ Minecraft 26.3 on Fabric, client only. Sandboxes copies your world's save folder
 
 ### The pause menu
 
-- In a singleplayer world, the pause menu has a **Sandboxes** button directly above **Save and Quit to Title**. Save and Quit and anything below it move down one row to make room.
-- Click **Sandboxes** to open the Sandboxes screen for the world you're in.
+- In a singleplayer world, the pause menu's row of small square buttons has a **Sandboxes** button at its end. Hover it to see its name.
+- Click it to open the Sandboxes screen for the world you're in.
 
 ### The Sandboxes screen
 
@@ -79,7 +79,7 @@ From left to right:
 
 - **Join** opens the sandbox in creative mode with commands on. The first time, you stand where you were when the sandbox was made. After that, you return to where you last were inside that sandbox. A sandbox of a hardcore world isn't hardcore, and its difficulty is set to Hard.
 - **Sync** asks "Sync this sandbox?" first, since anything built in the sandbox is lost. Your world is saved, and the sandbox is replaced with a fresh copy of it. A name you've set stays. A name that is still the generated date and time is updated to the current date and time. The sandbox keeps its overlay key.
-- **✎** turns the name into a text box. Press Enter or click **✓** to save it. Names can be up to 64 characters, and an empty name keeps the old one.
+- **✎** turns the name into a text box, ready to type in. Press Enter or click **✓** to save it, or Escape to keep the old name. Names can be up to 64 characters, and an empty name keeps the old one.
 - **❐** copies the sandbox as it is now, including its player and inventory, into a new card. A name you've set gets " (copy)" added to it, and a generated name gets the current date and time. The overlay key stays with the original.
 - **✕** asks "Delete this sandbox?" first. A deleted sandbox can't be brought back.
 - While a sandbox is being synced or deleted, its card shows "Syncing sandbox..." or "Deleting sandbox..." in place of its buttons. The rest of the screen stays usable.
@@ -87,7 +87,7 @@ From left to right:
 ### Inside a sandbox
 
 - Red text at the top of the screen reads "Sandbox of world" followed by the world's name.
-- The pause menu shows **Return to** followed by the world's name, in place of **Sandboxes**. Click it to save the sandbox and open your world. You're back in survival with your own inventory, where you left off.
+- The Sandboxes button's tooltip reads **Return to** followed by the world's name. Click it to save the sandbox and open your world. You're back in survival with your own inventory, where you left off.
 - **Save and Quit to Title** works as usual. Sandboxes don't appear in Minecraft's world list, so to get back into one, open its world and join it from the Sandboxes screen.
 - The Sandboxes screen opens from inside a sandbox through Mod Menu. The card for the sandbox you're in says "You're in this one" and has no **Join**, **Sync**, or ✕ button.
 
