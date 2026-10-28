@@ -3,7 +3,7 @@
   "id": "sandboxes",
   "version": "${version}",
   "name": "Sandboxes",
-  "description": "Creative-mode copies of your singleplayer world, for trying things without touching the real one.",
+  "description": "Make a creative copy of your world from the pause menu, try anything in it, and return to survival where you left off.",
   "authors": [
     "trevorschoeny"
   ],
@@ -13,6 +13,11 @@
   "mixins": [
     "sandboxes.mixins.json"
   ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/sandboxes",
+    "sources": "https://github.com/trevorschoeny/sandboxes",
+    "issues": "https://github.com/trevorschoeny/sandboxes/issues"
+  },
   "entrypoints": {
     "client": [
       "com.trevorschoeny.sandboxes.SandboxesClient"
