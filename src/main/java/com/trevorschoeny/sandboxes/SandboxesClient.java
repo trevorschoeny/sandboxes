@@ -8,7 +8,6 @@ import com.trevorschoeny.sandboxes.overlay.OverlayLook;
 import com.trevorschoeny.sandboxes.overlay.OverlayRenderer;
 import com.trevorschoeny.sandboxes.sandbox.LegacyMigration;
 import com.trevorschoeny.sandboxes.ui.InSandboxHud;
-import com.trevorschoeny.sandboxes.ui.Keys;
 import com.trevorschoeny.sandboxes.ui.QuickButton;
 
 import net.fabricmc.api.ClientModInitializer;
@@ -30,7 +29,6 @@ public class SandboxesClient implements ClientModInitializer {
         SandboxesConfig.load();
         QuickButton.install();
         InSandboxHud.install();
-        Keys.install();
         Overlay.install();
         OverlayRenderer.install();
         OverlayHud.install();

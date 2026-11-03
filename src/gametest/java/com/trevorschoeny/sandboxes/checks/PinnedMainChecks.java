@@ -21,6 +21,10 @@ public class PinnedMainChecks implements FabricClientGameTest {
         try (TestSingleplayerContext world = ctx.worldBuilder().create()) {
             world.getConnection().waitForChunksRender();
             String worldId = ctx.computeOnClient(mc -> CurrentWorld.levelId());
+            // The pails are the way across; Controls has no Sandboxes key.
+            long keys = ctx.computeOnClient(mc -> java.util.Arrays.stream(mc.options.keyMappings)
+                    .filter(k -> k.getName().startsWith("key.sandboxes.")).count());
+            if (keys != 0) throw new AssertionError("Controls still has " + keys + " Sandboxes key(s)");
             // One sandbox. The copy reads what's on disk, so save first.
             world.getServer().runOnServer(server -> server.saveEverything(true, true, false));
             try {

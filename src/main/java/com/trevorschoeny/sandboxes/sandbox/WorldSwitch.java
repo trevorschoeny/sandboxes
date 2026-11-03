@@ -63,8 +63,7 @@ public final class WorldSwitch {
     }
 
     /**
-     * The quick hop between a world and its sandbox, shared by the pause-menu
-     * quick button and the hop key so they can't drift apart.
+     * The quick hop between a world and its sandbox: what the quick button does.
      *
      * <p>Inside a sandbox it returns to the main world. In a world it joins the
      * sandbox joined most recently. In a world with no sandboxes it does nothing:

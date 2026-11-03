@@ -19,8 +19,6 @@
   "sandboxes.button.duplicate": "Duplicate",
   "sandboxes.status.duplicating": "Duplicating sandbox...",
   "sandboxes.overlay.hud": "Overlay: %s",
-  "key.category.sandboxes.sandboxes": "Sandboxes",
-  "key.sandboxes.hop": "Hop to sandbox and back",
   "sandboxes.binding.overlay": "Sandbox overlay: %s",
   "sandboxes.button.overlay_key.tooltip": "This sandbox's overlay key. In your world it shows this sandbox's overlay; inside the sandbox it compares with your world. Right-click to clear.",
   "sandboxes.screen.key_conflict": "Overlay key also used by: %s",
