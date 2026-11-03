@@ -39,11 +39,14 @@ public final class QuickButton {
     private QuickButton() {}
 
     /**
-     * A blue pail with a spade, both ways, unlike the red one in the pause
-     * menu's icon row, which opens the list. The tooltip says where it goes.
+     * A pail with a spade, coloured by where it lands you: blue for a sandbox,
+     * red for the main world. The pause menu's own pail, which opens the list,
+     * is red with no spade: the list is home base. The tooltip names the world.
      */
     private static final Identifier SPRITE =
             Identifier.fromNamespaceAndPath("sandboxes", "quick");
+    private static final Identifier BACK_SPRITE =
+            Identifier.fromNamespaceAndPath("sandboxes", "quick_back");
 
     private static final int SIZE = 20;
 
@@ -62,10 +65,10 @@ public final class QuickButton {
 
     /** Builds the panels and registers them. Call once at client init. */
     public static void install() {
-        // The pause menu's top-right corner.
+        // The top-right corner of the pause menu and of the sandbox list.
         new VanillaScreenPanelAdapter(panel("sandboxes.quick",
                 PanelPosition.screenAnchor(InsideRegion.TOP_RIGHT), SandboxesConfig::quickButton), 0)
-                .on(PauseScreen.class);
+                .on(PauseScreen.class, SandboxesScreen.class);
         // The same corner of the inventory screen, survival and creative alike, so
         // the button is where your hand already goes in the pause menu.
         new ScreenPanelAdapter(panel("sandboxes.quick.inventory",
@@ -79,7 +82,7 @@ public final class QuickButton {
                 .style(PanelStyle.NONE)
                 .position(position)
                 .add(Button.builder()
-                        .icon(SPRITE)
+                        .icon(() -> CurrentWorld.inSandbox() ? BACK_SPRITE : SPRITE)
                         .size(SIZE, SIZE)
                         .disabledWhen(DiskJobs::running)   // no leaving while a copy reads the world
                         .onClick(WorldSwitch::hop)

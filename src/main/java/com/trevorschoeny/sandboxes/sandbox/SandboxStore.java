@@ -12,8 +12,6 @@ import net.minecraft.client.Minecraft;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -47,14 +45,19 @@ public final class SandboxStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     /**
-     * The auto-generated name format, and the pattern that recognises one later.
-     * A name still matching this is treated as untouched, so a sync re-stamps it;
-     * anything else is the player's own name and is preserved.
+     * Generated names are "Sandbox 1", "Sandbox 2", and so on. A name still in
+     * this shape is untouched, so a duplicate takes the next number instead of
+     * "(copy)"; anything else is the player's own name.
      */
-    private static final DateTimeFormatter NAME_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private static final Pattern GENERATED_NAME =
+    private static final Pattern GENERATED_NAME = Pattern.compile("Sandbox \\d+");
+    /** v2 generated names were the date and time. */
+    private static final Pattern DATED_GENERATED_NAME =
             Pattern.compile("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}");
+    /**
+     * The next sandbox number, in the world's sandboxes folder. Kept on disk
+     * so a number is never handed out twice, even after the newest is deleted.
+     */
+    private static final String NEXT_FILE = "next-number.txt";
     /** v1 generated names looked like "Sandbox — Apr 5, 7:31 PM"; also not custom. */
     private static final Pattern LEGACY_GENERATED_NAME =
             Pattern.compile("Sandbox [—-] \\w{3} \\d{1,2}, \\d{1,2}:\\d{2} [AP]M");
@@ -152,7 +155,7 @@ public final class SandboxStore {
         Files.createDirectories(dest.getParent());
 
         WorldFiles.copyWorld(source, dest);
-        String name = generatedName();
+        String name = generatedName(worldId);
         WorldFiles.makeSandboxLevel(source, dest, name);
         write(dest, name, 0L, "");
 
@@ -162,12 +165,11 @@ public final class SandboxStore {
 
     /**
      * Throws the sandbox's contents away and takes a fresh copy of the world.
-     * A name the player chose is kept; a still-generated one is re-stamped, so
-     * the row's date reflects what the copy actually contains.
+     * It keeps its name.
      */
     public static void sync(Sandbox sandbox) throws IOException {
         Path source = savesDir().resolve(sandbox.parentId());
-        String name = isGeneratedName(sandbox.name()) ? generatedName() : sandbox.name();
+        String name = sandbox.name();
 
         WorldFiles.deleteDirectory(sandbox.dir());
         WorldFiles.copyWorld(source, sandbox.dir());
@@ -182,14 +184,14 @@ public final class SandboxStore {
      * come along. Nothing is re-forked from the main world.
      *
      * <p>A name the player chose becomes "name (copy)"; a still-generated one
-     * gets the current date instead, the same rule sync follows.
+     * gets the next number instead.
      */
     public static Sandbox duplicate(Sandbox source) throws IOException {
         String id = UUID.randomUUID().toString();
         Path dest = sandboxesDir(source.parentId()).resolve(id);
         WorldFiles.copyWorld(source.dir(), dest);
 
-        String name = isGeneratedName(source.name()) ? generatedName() : source.name() + " (copy)";
+        String name = isGeneratedName(source.name()) ? generatedName(source.parentId()) : source.name() + " (copy)";
         // The key stays with the original: one key showing two sandboxes would be ambiguous.
         write(dest, name, 0L, "");
 
@@ -228,13 +230,42 @@ public final class SandboxStore {
 
     // Names
 
-    private static String generatedName() {
-        return LocalDateTime.now().format(NAME_FORMAT);
+    /**
+     * "Sandbox N" with the world's next number, which is then used up. A world
+     * with no counter yet (its sandboxes made before numbering) starts after the
+     * highest "Sandbox N" it already has.
+     */
+    private static synchronized String generatedName(String worldId) throws IOException {
+        Path file = sandboxesDir(worldId).resolve(NEXT_FILE);
+        int next = 0;
+        if (Files.exists(file)) {
+            try {
+                next = Integer.parseInt(Files.readString(file).trim());
+            } catch (NumberFormatException e) {
+                SandboxesClient.LOGGER.warn("[sandboxes] unreadable {}, counting from the names", file);
+            }
+        }
+        for (Sandbox sandbox : list(worldId)) next = Math.max(next, numberOf(sandbox.name()) + 1);
+        next = Math.max(next, 1);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, Integer.toString(next + 1));
+        return "Sandbox " + next;
     }
 
-    /** True when the name is one this mod would have generated (v2 or v1 shape). */
+    /** N for a "Sandbox N" name, else 0. */
+    private static int numberOf(String name) {
+        if (!GENERATED_NAME.matcher(name).matches()) return 0;
+        try {
+            return Integer.parseInt(name.substring("Sandbox ".length()));
+        } catch (NumberFormatException e) {   // more digits than an int holds
+            return 0;
+        }
+    }
+
+    /** True when the name is one this mod would have generated (any version's shape). */
     public static boolean isGeneratedName(String name) {
         return GENERATED_NAME.matcher(name).matches()
+                || DATED_GENERATED_NAME.matcher(name).matches()
                 || LEGACY_GENERATED_NAME.matcher(name).matches();
     }
 }

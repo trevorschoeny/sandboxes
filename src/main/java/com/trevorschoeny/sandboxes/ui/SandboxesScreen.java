@@ -196,7 +196,7 @@ public final class SandboxesScreen extends MKScreen {
     // The Sandboxes tab
 
     /**
-     * "+ New sandbox" with the main world's card beside it, and what's being
+     * The main world's card with "+ New sandbox" beside it, and what's being
      * copied under them, all fixed above the sandbox cards, which scroll on their own.
      */
     private static List<PanelElement> sandboxesBody(@Nullable String worldId) {
@@ -212,10 +212,10 @@ public final class SandboxesScreen extends MKScreen {
         Component none = Component.empty();
         return List.of(Flow.builder().vertical().gap(6)
                 .add(Flow.builder().gap(8).crossAlign(CrossAlign.CENTER)
+                        .add(mainCard(worldId))
                         .add(Button.builder().label(Component.translatable("sandboxes.compact.new")).size(140, 20)
                                 .disabledWhen(() -> DiskJobs.copying() != null)
                                 .onClick(() -> createIn(worldId)).build())
-                        .add(mainCard(worldId))
                         .build())
                 .add(TextLabel.builder().role(TextRole.MUTED)
                         .text(() -> { Component c = DiskJobs.copying(); return c == null ? none : c; })
@@ -272,7 +272,7 @@ public final class SandboxesScreen extends MKScreen {
                 .build();
     }
 
-    /** The main world's picture beside "+ New sandbox": small, so the card stays one line. */
+    /** The main world's picture: small, so its card stays one line. */
     private static final int MAIN_ICON_SIZE = 16;
 
     /**
@@ -285,7 +285,7 @@ public final class SandboxesScreen extends MKScreen {
         boolean current = worldId.equals(CurrentWorld.levelId());
         Path dir = SandboxStore.savesDir().resolve(worldId);
         // A boxed row fills its panel's width; a boxed column hugs its one row,
-        // so the card fits beside "+ New sandbox".
+        // so "+ New sandbox" fits beside the card.
         return Flow.builder().vertical().boxed()
                 .add(Flow.builder().gap(6).crossAlign(CrossAlign.CENTER)
                         .add(Icon.builder().texture(() -> worldIcon(worldId, worldId, dir), 64)

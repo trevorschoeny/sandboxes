@@ -11,7 +11,8 @@ import net.minecraft.client.gui.screens.PauseScreen;
 /**
  * Inside a sandbox the pause menu's Sandboxes button opens the list, with the
  * main world pinned on top: its Join is the live one, while the sandbox you're
- * in has Join and Sync greyed out and no Delete.
+ * in has Join and Sync greyed out and no Delete. The quick button shows on the
+ * list as well, naming where it goes.
  */
 public class PinnedMainChecks implements FabricClientGameTest {
 
@@ -31,6 +32,7 @@ public class PinnedMainChecks implements FabricClientGameTest {
             // In the main world: its own Join is greyed, the sandbox's is live.
             openFromPause(ctx);
             expect(ctx, "Join", 1, "in the main world, only the sandbox's Join should be live");
+            expect(ctx, "Jump to Sandbox 1", 1, "the list shows the quick button too");
             ctx.takeScreenshot("sandboxes-pinned-main-world");
 
             ListChecks.click(ctx, "Join");
@@ -42,6 +44,7 @@ public class PinnedMainChecks implements FabricClientGameTest {
             expect(ctx, "Join", 1, "inside the sandbox, only the main world's Join should be live");
             expect(ctx, "Sync", 0, "the sandbox you're in can't be synced");
             expect(ctx, "✕", 0, "the sandbox you're in can't be deleted");
+            expect(ctx, "Back to " + worldId, 1, "inside a sandbox the list's quick button goes back");
             ctx.takeScreenshot("sandboxes-pinned-in-sandbox");
 
             // Join on the main world, taking you home, stays in Trev's walk: Fabric's

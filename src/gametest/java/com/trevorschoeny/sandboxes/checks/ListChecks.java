@@ -14,7 +14,8 @@ import net.minecraft.client.gui.screens.Screen;
 
 /**
  * The sandbox list changes in place: "+ New sandbox" adds a card and Delete
- * removes one while the screen stays open, the same screen throughout.
+ * removes one while the screen stays open, the same screen throughout. New
+ * sandboxes are numbered, and a deleted number isn't handed out again.
  */
 public class ListChecks implements FabricClientGameTest {
 
@@ -47,6 +48,14 @@ public class ListChecks implements FabricClientGameTest {
         ctx.waitFor(mc -> count(mc, "Join") == before, 40);
         same(ctx, screen, "deleting a sandbox");
         ctx.takeScreenshot("sandboxes-list-deleted");
+
+        // Numbers count on past a deleted sandbox: the next one is Sandbox 2, not 1 again.
+        click(ctx, "+ New sandbox");
+        ctx.waitFor(mc -> SandboxStore.list(worldId).size() == before + 1, 20 * 60);
+        String name = ctx.computeOnClient(mc -> SandboxStore.list(worldId).get(0).name());
+        if (!name.equals("Sandbox 2")) {
+            throw new AssertionError("after making and deleting Sandbox 1, the next should be Sandbox 2; got " + name);
+        }
         ctx.setScreen(() -> null);
     }
 
