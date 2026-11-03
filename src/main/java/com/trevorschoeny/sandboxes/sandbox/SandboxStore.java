@@ -54,10 +54,12 @@ public final class SandboxStore {
     private static final Pattern DATED_GENERATED_NAME =
             Pattern.compile("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}");
     /**
-     * The next sandbox number, in the world's sandboxes folder. Kept on disk
-     * so a number is never handed out twice, even after the newest is deleted.
+     * The world's own sandbox state, in its sandboxes folder: for now the next
+     * sandbox number, kept on disk so a number is never handed out twice, even
+     * after the newest is deleted.
      */
-    private static final String NEXT_FILE = "next-number.txt";
+    private static final String WORLD_FILE = "world.json";
+    private static final int WORLD_FILE_VERSION = 1;
     /** v1 generated names looked like "Sandbox — Apr 5, 7:31 PM"; also not custom. */
     private static final Pattern LEGACY_GENERATED_NAME =
             Pattern.compile("Sandbox [—-] \\w{3} \\d{1,2}, \\d{1,2}:\\d{2} [AP]M");
@@ -236,19 +238,24 @@ public final class SandboxStore {
      * highest "Sandbox N" it already has.
      */
     private static synchronized String generatedName(String worldId) throws IOException {
-        Path file = sandboxesDir(worldId).resolve(NEXT_FILE);
+        Path file = sandboxesDir(worldId).resolve(WORLD_FILE);
         int next = 0;
         if (Files.exists(file)) {
             try {
-                next = Integer.parseInt(Files.readString(file).trim());
-            } catch (NumberFormatException e) {
-                SandboxesClient.LOGGER.warn("[sandboxes] unreadable {}, counting from the names", file);
+                JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+                if (root.has("nextNumber")) next = root.get("nextNumber").getAsInt();
+            } catch (Exception e) {
+                // The names on disk still say where counting got to.
+                SandboxesClient.LOGGER.warn("[sandboxes] unreadable {}, counting from the names", file, e);
             }
         }
         for (Sandbox sandbox : list(worldId)) next = Math.max(next, numberOf(sandbox.name()) + 1);
         next = Math.max(next, 1);
+        JsonObject root = new JsonObject();
+        root.addProperty("version", WORLD_FILE_VERSION);
+        root.addProperty("nextNumber", next + 1);
         Files.createDirectories(file.getParent());
-        Files.writeString(file, Integer.toString(next + 1));
+        Files.writeString(file, GSON.toJson(root));
         return "Sandbox " + next;
     }
 

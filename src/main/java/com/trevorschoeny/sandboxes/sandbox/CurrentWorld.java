@@ -48,7 +48,7 @@ public final class CurrentWorld {
         return SandboxStore.isSandbox(id) ? SandboxStore.parentOf(id) : id;
     }
 
-    /** Display name of the parent world, for the "Return to <world>" button. */
+    /** The world a sandbox was copied from, or null outside a sandbox. */
     public static @Nullable String parentDisplayName() {
         String id = levelId();
         if (id == null || !SandboxStore.isSandbox(id)) return null;

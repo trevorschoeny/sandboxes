@@ -70,8 +70,9 @@ import java.util.function.Consumer;
  * with no world (from Mod Menu on the title screen) only Settings shows, since
  * sandboxes exist inside their world.
  *
- * <p>The main world's card sits beside "+ New sandbox", above the list, so its
- * way back is always in the same place. Whichever world you're in, its card's Join is greyed out.
+ * <p>The main world's card sits above the list, with "+ New sandbox" beside it,
+ * so its way back is always in the same place. Whichever world you're in, its
+ * card's Join is greyed out.
  *
  * <p>The cards are a MenuKit {@code ListView} keyed by sandbox id. Each card is
  * built once and reads what can change (name, size, key warning, busy line) by
