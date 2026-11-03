@@ -37,5 +37,5 @@
   "sandboxes.settings.quick_inventory.desc": "The same button in the top-right corner of the screen while your inventory is open, in survival and creative.",
   "sandboxes.overlay.change": "%s → %s",
   "sandboxes.row.here": "You're in this world",
-  "sandboxes.row.main": "Main world  ·  %s"
+  "sandboxes.row.main": "Main world"
 }

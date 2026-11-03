@@ -70,8 +70,8 @@ import java.util.function.Consumer;
  * with no world (from Mod Menu on the title screen) only Settings shows, since
  * sandboxes exist inside their world.
  *
- * <p>The main world's card is pinned above the list, so its way back is always
- * in the same place. Whichever world you're in, its card's Join is greyed out.
+ * <p>The main world's card sits beside "+ New sandbox", above the list, so its
+ * way back is always in the same place. Whichever world you're in, its card's Join is greyed out.
  *
  * <p>The cards are a MenuKit {@code ListView} keyed by sandbox id. Each card is
  * built once and reads what can change (name, size, key warning, busy line) by
@@ -135,7 +135,6 @@ public final class SandboxesScreen extends MKScreen {
             if (conflict != null) CONFLICTS.put(sandbox.id(), conflict);
         }
         measureSizes(listed);
-        measureMainSize();
     }
 
     /** The sandbox with this id as last read, or null once it's gone (its card is about to go too). */
@@ -197,8 +196,8 @@ public final class SandboxesScreen extends MKScreen {
     // The Sandboxes tab
 
     /**
-     * "+ New sandbox" and what's being copied, then the main world's card, all
-     * fixed above the sandbox cards, which scroll on their own.
+     * "+ New sandbox" with the main world's card beside it, and what's being
+     * copied under them, all fixed above the sandbox cards, which scroll on their own.
      */
     private static List<PanelElement> sandboxesBody(@Nullable String worldId) {
         if (worldId == null) return List.of();
@@ -216,11 +215,12 @@ public final class SandboxesScreen extends MKScreen {
                         .add(Button.builder().label(Component.translatable("sandboxes.compact.new")).size(140, 20)
                                 .disabledWhen(() -> DiskJobs.copying() != null)
                                 .onClick(() -> createIn(worldId)).build())
-                        .add(TextLabel.builder().role(TextRole.MUTED)
-                                .text(() -> { Component c = DiskJobs.copying(); return c == null ? none : c; })
-                                .build())
+                        .add(mainCard(worldId))
                         .build())
-                .add(mainCard(worldId))
+                .add(TextLabel.builder().role(TextRole.MUTED)
+                        .text(() -> { Component c = DiskJobs.copying(); return c == null ? none : c; })
+                        .visibleWhen(() -> DiskJobs.copying() != null)
+                        .build())
                 .add(ScrollContainer.builder().fitWidth().fillHeight().content(List.of(cards)).build())
                 .build());
     }
@@ -272,24 +272,28 @@ public final class SandboxesScreen extends MKScreen {
                 .build();
     }
 
+    /** The main world's picture beside "+ New sandbox": small, so the card stays one line. */
+    private static final int MAIN_ICON_SIZE = 16;
+
     /**
-     * The world the sandboxes were copied from: its picture, name, size and a
-     * Join, greyed out while you're in it. Nothing else, because sync, rename,
-     * duplicate, delete and the overlay are all things you do to a sandbox.
+     * The world the sandboxes were copied from, on one line: a small picture, its
+     * name, "Main world", and a Join, greyed out while you're in it. Nothing else,
+     * because sync, rename, duplicate, delete and the overlay are all things you
+     * do to a sandbox. Boxed like the sandbox cards, since it's a world too.
      */
     private static PanelElement mainCard(String worldId) {
         boolean current = worldId.equals(CurrentWorld.levelId());
         Path dir = SandboxStore.savesDir().resolve(worldId);
-        Flow text = Flow.builder().vertical().gap(2)
-                .add(TextLabel.builder().text(Component.literal(worldId)).build())
-                .add(TextLabel.builder().text(() -> Component.translatable("sandboxes.row.main",
-                        SIZES.getOrDefault(worldId, "…"))).role(TextRole.MUTED).build())
-                .add(join(current, () -> WorldSwitch.openLevel(worldId)))
-                .build();
-        return Flow.builder().boxed().gap(6)
-                .add(Icon.builder().texture(() -> worldIcon(worldId, worldId, dir), 64)
-                        .size(ICON_SIZE, ICON_SIZE).build())
-                .add(text)
+        // A boxed row fills its panel's width; a boxed column hugs its one row,
+        // so the card fits beside "+ New sandbox".
+        return Flow.builder().vertical().boxed()
+                .add(Flow.builder().gap(6).crossAlign(CrossAlign.CENTER)
+                        .add(Icon.builder().texture(() -> worldIcon(worldId, worldId, dir), 64)
+                                .size(MAIN_ICON_SIZE, MAIN_ICON_SIZE).build())
+                        .add(TextLabel.builder().text(Component.literal(worldId)).build())
+                        .add(TextLabel.builder().text(Component.translatable("sandboxes.row.main")).role(TextRole.MUTED).build())
+                        .add(join(current, () -> WorldSwitch.openLevel(worldId)))
+                        .build())
                 .build();
     }
 
@@ -541,15 +545,6 @@ public final class SandboxesScreen extends MKScreen {
             // The cards read SIZES every frame, so each size shows as soon as it's in.
             for (Sandbox sandbox : unknown) SIZES.put(sandbox.id(), humanSize(WorldFiles.sizeOf(sandbox.dir())));
         });
-    }
-
-    /** The main world's size, measured once per screen: it changes as you play. */
-    private static void measureMainSize() {
-        String worldId = listedWorld;
-        if (worldId == null) return;
-        SIZES.remove(worldId);
-        Thread.ofPlatform().name("sandboxes-sizes").start(() ->
-                SIZES.put(worldId, humanSize(WorldFiles.sizeOf(SandboxStore.savesDir().resolve(worldId)))));
     }
 
     private static String humanSize(long bytes) {
