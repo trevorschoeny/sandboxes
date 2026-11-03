@@ -149,8 +149,10 @@ public final class WorldFiles {
 
     /** Size on disk of a sandbox, for the row's size column. Best effort. */
     public static long sizeOf(Path dir) {
+        // A world's own sandboxes live in its folder; they aren't part of its size.
+        Path sandboxes = dir.resolve(SandboxStore.SANDBOX_DIR);
         try (Stream<Path> files = Files.walk(dir)) {
-            return files.filter(Files::isRegularFile).mapToLong(file -> {
+            return files.filter(file -> !file.startsWith(sandboxes) && Files.isRegularFile(file)).mapToLong(file -> {
                 try {
                     return Files.size(file);
                 } catch (IOException e) {

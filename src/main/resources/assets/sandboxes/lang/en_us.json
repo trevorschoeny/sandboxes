@@ -1,6 +1,5 @@
 {
   "sandboxes.pause.open": "Sandboxes",
-  "sandboxes.pause.return": "Return to %s",
   "sandboxes.quick.to": "Jump to %s",
   "sandboxes.quick.back": "Back to %s",
   "sandboxes.hud.in_sandbox": "Sandbox of world %s",
@@ -37,5 +36,6 @@
   "sandboxes.settings.quick_inventory": "Quick sandbox button in inventory",
   "sandboxes.settings.quick_inventory.desc": "The same button in the top-right corner of the screen while your inventory is open, in survival and creative.",
   "sandboxes.overlay.change": "%s → %s",
-  "sandboxes.row.here": "You're in this one"
+  "sandboxes.row.here": "You're in this world",
+  "sandboxes.row.main": "Main world  ·  %s"
 }

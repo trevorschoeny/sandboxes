@@ -5,7 +5,8 @@
   "environment": "client",
   "entrypoints": {
     "fabric-client-gametest": [
-      "com.trevorschoeny.sandboxes.checks.ListChecks"
+      "com.trevorschoeny.sandboxes.checks.ListChecks",
+      "com.trevorschoeny.sandboxes.checks.PinnedMainChecks"
     ]
   }
 }

@@ -61,14 +61,14 @@ public class ListChecks implements FabricClientGameTest {
     }
 
     /** Live MenuKit controls carry a stand-in widget named after their label. */
-    private static long count(Minecraft mc, String label) {
+    static long count(Minecraft mc, String label) {
         return mc.gui.screen().children().stream()
                 .filter(c -> c instanceof AbstractWidget w && w.isActive() && w.getMessage().getString().equals(label))
                 .count();
     }
 
     /** Clicks the first live control with this label, with the real mouse. */
-    private static void click(ClientGameTestContext ctx, String label) {
+    static void click(ClientGameTestContext ctx, String label) {
         int[] at = ctx.computeOnClient(mc -> mc.gui.screen().children().stream()
                 .filter(c -> c instanceof AbstractWidget w && w.isActive() && w.getMessage().getString().equals(label))
                 .map(c -> (AbstractWidget) c)
