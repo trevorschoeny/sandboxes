@@ -47,7 +47,7 @@ public class PinnedMainChecks implements FabricClientGameTest {
             expect(ctx, "Back to " + worldId, 1, "inside a sandbox the list's quick button goes back");
             ctx.takeScreenshot("sandboxes-pinned-in-sandbox");
 
-            // Join on the main world, taking you home, stays in Trev's walk: Fabric's
+            // Join on the main world, taking you home, stays a manual check: Fabric's
             // test harness doesn't reopen the world it created once something else
             // has closed it (the screen sits on "Saving world"). The same switch
             // works in the game, through the quick button's "Back to".
