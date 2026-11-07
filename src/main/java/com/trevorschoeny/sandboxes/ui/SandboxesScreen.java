@@ -54,6 +54,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +87,7 @@ public final class SandboxesScreen extends MKScreen {
     // Screen state, static because there's one screen at a time.
     private static String tab = "sandboxes";
     private static final Map<String, Double> SCROLL = new HashMap<>();
-    /** The world listed, and its sandboxes as last read from disk (newest joined first). */
+    /** The world listed, and its sandboxes as last read from disk (newest made first). */
     private static @Nullable String listedWorld = null;
     private static List<Sandbox> listed = List.of();
     /** Each sandbox's key warning, worked out with the list rather than every frame. */
@@ -129,13 +130,23 @@ public final class SandboxesScreen extends MKScreen {
      * takes: cards come, go and update on the next frame.
      */
     private static void reload() {
-        listed = listedWorld == null ? List.of() : SandboxStore.list(listedWorld);
+        // The list shows newest sandbox first; SandboxStore.list() itself stays
+        // most-recently-joined first, which is what the quick button reads.
+        listed = listedWorld == null ? List.of()
+                : SandboxStore.list(listedWorld).stream()
+                        .sorted(Comparator.comparingLong(Sandbox::createdAt).reversed())
+                        .toList();
         CONFLICTS.clear();
         for (Sandbox sandbox : listed) {
             Component conflict = conflictLine(sandbox);
             if (conflict != null) CONFLICTS.put(sandbox.id(), conflict);
         }
         measureSizes(listed);
+    }
+
+    /** The list as last drawn, newest sandbox first. For the self-check. */
+    public static List<Sandbox> displayOrder() {
+        return listed;
     }
 
     /** The sandbox with this id as last read, or null once it's gone (its card is about to go too). */

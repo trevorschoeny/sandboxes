@@ -56,6 +56,17 @@ public class ListChecks implements FabricClientGameTest {
         if (!name.equals("Sandbox 2")) {
             throw new AssertionError("after making and deleting Sandbox 1, the next should be Sandbox 2; got " + name);
         }
+
+        // Neither card has been joined, so the list can only be ordering by
+        // creation: the one just made (Sandbox 3) must sit above the older one.
+        click(ctx, "+ New sandbox");
+        ctx.waitFor(mc -> SandboxStore.list(worldId).size() == before + 2, 20 * 60);
+        ctx.waitFor(mc -> SandboxesScreen.displayOrder().size() == before + 2, 40);
+        String top = ctx.computeOnClient(mc -> SandboxesScreen.displayOrder().get(0).name());
+        if (!top.equals("Sandbox 3")) {
+            throw new AssertionError("Sandbox 3 (just made) should list above Sandbox 2; list starts with " + top);
+        }
+
         ctx.setScreen(() -> null);
     }
 
